@@ -14,7 +14,7 @@ export async function generateWorkoutProgram(
   const prompt = buildProgramPrompt(userData);
 
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: [
       {
         role: 'system',
@@ -45,7 +45,7 @@ export async function generateAdaptation(
   performanceData: Record<string, unknown>
 ): Promise<{ recommendations: string[]; adjustments: Record<string, unknown> }> {
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: [
       {
         role: 'system',
@@ -88,7 +88,7 @@ export async function chatWithCoach(
   userContext: Record<string, unknown>
 ): Promise<string> {
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: [
       {
         role: 'system',
