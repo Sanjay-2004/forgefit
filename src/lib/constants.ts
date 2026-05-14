@@ -55,6 +55,30 @@ export const STRESS_LEVELS = [
   { value: 'very_high', label: 'Very High' },
 ] as const;
 
+export const TRAINING_LOCATIONS = [
+  { value: 'home', label: 'Home', icon: '🏠', description: 'Bodyweight / dumbbells at home' },
+  { value: 'gym', label: 'Gym', icon: '🏋️', description: 'Full gym access' },
+  { value: 'both', label: 'Both', icon: '🔄', description: 'Mix of home and gym days' },
+] as const;
+
+export const DOPAMINE_TYPES = [
+  { value: 'competition', label: 'Competition', icon: '⚔️', description: 'Beat rivals, climb leaderboards', theme: 'Blue Lock' },
+  { value: 'leveling', label: 'Leveling Up', icon: '⬆️', description: 'Gain XP, rank up, grow power', theme: 'Solo Leveling' },
+  { value: 'streaks', label: 'Streaks', icon: '🔥', description: 'Build habits, never break the chain', theme: 'Daily Warrior' },
+  { value: 'social', label: 'Social', icon: '📱', description: 'Share progress, weekly recaps', theme: 'Community' },
+  { value: 'rewards', label: 'Rewards', icon: '🏆', description: 'Unlock badges and achievements', theme: 'Collector' },
+] as const;
+
+export const COMMON_LIFTS = [
+  { key: 'bench_press', label: 'Bench Press', unit: 'kg' },
+  { key: 'squat', label: 'Squat', unit: 'kg' },
+  { key: 'deadlift', label: 'Deadlift', unit: 'kg' },
+  { key: 'overhead_press', label: 'Overhead Press', unit: 'kg' },
+  { key: 'barbell_row', label: 'Barbell Row', unit: 'kg' },
+  { key: 'body_weight', label: 'Body Weight', unit: 'kg' },
+  { key: 'run_5k', label: '5K Run Time', unit: 'min' },
+] as const;
+
 export const MUSCLE_GROUPS = [
   'chest', 'front_delts', 'side_delts', 'rear_delts',
   'triceps', 'biceps', 'forearms',
@@ -67,3 +91,18 @@ export const MUSCLE_GROUPS = [
 export const DAYS_OF_WEEK = [
   'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
 ] as const;
+
+// XP rewards
+export const XP_REWARDS = {
+  SET_COMPLETE: 10,
+  WORKOUT_COMPLETE: 100,
+  PR_HIT: 250,
+  STREAK_DAILY_BONUS: 25,
+  STREAK_7_DAY: 200,
+  STREAK_30_DAY: 1000,
+  STREAK_100_DAY: 5000,
+  QUEST_DAILY: 150,
+  QUEST_WEEKLY: 500,
+  QUEST_MONTHLY: 2000,
+  QUEST_EMERGENCY: 300,
+} as const;

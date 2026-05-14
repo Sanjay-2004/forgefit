@@ -299,3 +299,154 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- ============================================
+-- GAMIFICATION
+-- ============================================
+
+CREATE TABLE public.user_gamification (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  xp_total INTEGER DEFAULT 0,
+  current_rank TEXT DEFAULT 'E' CHECK (current_rank IN ('E','D','C','B','A','S','SS','SSS','National','World','Monarch')),
+  streak_count INTEGER DEFAULT 0,
+  streak_freeze_count INTEGER DEFAULT 1,
+  longest_streak INTEGER DEFAULT 0,
+  last_workout_date TIMESTAMPTZ,
+  quests_completed INTEGER DEFAULT 0,
+  achievements_unlocked INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
+CREATE TABLE public.xp_transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('workout_complete','set_complete','pr_hit','streak_bonus','quest_complete','achievement')),
+  description TEXT,
+  session_id UUID REFERENCES public.workout_sessions(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.quests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('daily','weekly','monthly','emergency')),
+  title TEXT NOT NULL,
+  description TEXT,
+  criteria JSONB DEFAULT '{}',
+  xp_reward INTEGER DEFAULT 100,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','failed','expired')),
+  progress NUMERIC DEFAULT 0,
+  target_value NUMERIC DEFAULT 1,
+  current_value NUMERIC DEFAULT 0,
+  expires_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.achievement_definitions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  description TEXT,
+  icon TEXT,
+  criteria_type TEXT NOT NULL,
+  criteria_value NUMERIC NOT NULL,
+  xp_reward INTEGER DEFAULT 50,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.achievements (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  badge_id UUID NOT NULL REFERENCES public.achievement_definitions(id) ON DELETE CASCADE,
+  unlocked_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.progress_photos (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  photo_url TEXT NOT NULL,
+  pose_type TEXT CHECK (pose_type IN ('front','side','back')),
+  notes TEXT,
+  taken_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.user_goal_stats (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  metric TEXT NOT NULL,
+  current_value NUMERIC NOT NULL DEFAULT 0,
+  goal_value NUMERIC NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'kg',
+  target_date TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE public.weekly_plans (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  week_start DATE NOT NULL,
+  plan_json JSONB NOT NULL,
+  ai_reasoning TEXT,
+  user_edits JSONB,
+  accepted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add new columns to existing tables
+ALTER TABLE public.user_preferences
+  ADD COLUMN IF NOT EXISTS training_location TEXT CHECK (training_location IN ('home','gym','both')),
+  ADD COLUMN IF NOT EXISTS dopamine_type TEXT CHECK (dopamine_type IN ('competition','leveling','streaks','social','rewards'));
+
+ALTER TABLE public.workout_sessions
+  ADD COLUMN IF NOT EXISTS xp_earned INTEGER DEFAULT 0;
+
+-- Gamification indexes
+CREATE INDEX idx_user_gamification_user ON public.user_gamification(user_id);
+CREATE INDEX idx_xp_transactions_user ON public.xp_transactions(user_id);
+CREATE INDEX idx_quests_user ON public.quests(user_id);
+CREATE INDEX idx_achievements_user ON public.achievements(user_id);
+CREATE INDEX idx_progress_photos_user ON public.progress_photos(user_id);
+CREATE INDEX idx_user_goal_stats_user ON public.user_goal_stats(user_id);
+CREATE INDEX idx_weekly_plans_user ON public.weekly_plans(user_id);
+
+-- RLS for gamification tables
+ALTER TABLE public.user_gamification ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.xp_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.achievements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.progress_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_goal_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.weekly_plans ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own gamification" ON public.user_gamification FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own xp" ON public.xp_transactions FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own quests" ON public.quests FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own achievements" ON public.achievements FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own photos" ON public.progress_photos FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own goal stats" ON public.user_goal_stats FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own weekly plans" ON public.weekly_plans FOR ALL USING (auth.uid() = user_id);
+
+-- Gamification updated_at triggers
+CREATE TRIGGER user_gamification_updated_at BEFORE UPDATE ON public.user_gamification
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER user_goal_stats_updated_at BEFORE UPDATE ON public.user_goal_stats
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Seed achievement definitions
+INSERT INTO public.achievement_definitions (name, description, icon, criteria_type, criteria_value, xp_reward) VALUES
+  ('First Blood', 'Complete your first workout', '🩸', 'workouts_completed', 1, 50),
+  ('Getting Started', 'Complete 5 workouts', '🌱', 'workouts_completed', 5, 100),
+  ('Consistent', 'Complete 25 workouts', '⚡', 'workouts_completed', 25, 250),
+  ('Century Club', 'Complete 100 workouts', '💯', 'workouts_completed', 100, 1000),
+  ('PR Hunter', 'Hit 10 personal records', '🎯', 'prs_hit', 10, 500),
+  ('Iron Will', 'Maintain a 30-day streak', '🔥', 'streak_days', 30, 1000),
+  ('Unstoppable', 'Maintain a 100-day streak', '💎', 'streak_days', 100, 5000),
+  ('XP Farmer', 'Earn 10,000 total XP', '⭐', 'total_xp', 10000, 500),
+  ('Power Level', 'Reach Rank A', '🅰️', 'rank_reached', 5, 2000),
+  ('Elite Hunter', 'Reach Rank S', '🏆', 'rank_reached', 6, 5000);

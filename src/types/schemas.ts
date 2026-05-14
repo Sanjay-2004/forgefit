@@ -41,6 +41,10 @@ export const onboardingSchema = z.object({
   sleep_quality: z.enum(['poor', 'fair', 'good', 'excellent']),
   stress_level: z.enum(['low', 'moderate', 'high', 'very_high']),
   nutrition_preferences: z.string().optional().default(''),
+  training_location: z.enum(['home', 'gym', 'both']),
+  dopamine_type: z.enum(['competition', 'leveling', 'streaks', 'social', 'rewards']),
+  current_stats: z.record(z.string(), z.number()).default({}),
+  goal_stats: z.record(z.string(), z.number()).default({}),
 });
 
 export type ValidatedWeeklyPlan = z.infer<typeof weeklyPlanSchema>;

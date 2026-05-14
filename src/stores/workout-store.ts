@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { ExerciseLog, MuscleGroup } from '@/types';
+import type { MuscleGroup } from '@/types';
+import { calculateSetXP } from '@/lib/utils';
 
 interface SetData {
   weight_kg: number | null;
@@ -27,6 +28,7 @@ interface WorkoutState {
   restTimeRemaining: number;
   startTime: Date | null;
   isActive: boolean;
+  xpEarned: number;
 
   startWorkout: (sessionId: string, name: string, exercises: ActiveExercise[]) => void;
   completeSet: (exerciseIndex: number, setIndex: number, data: SetData) => void;
@@ -50,6 +52,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   restTimeRemaining: 0,
   startTime: null,
   isActive: false,
+  xpEarned: 0,
 
   startWorkout: (sessionId, name, exercises) =>
     set({
@@ -61,6 +64,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
       restTimeRemaining: 0,
       startTime: new Date(),
       isActive: true,
+      xpEarned: 0,
     }),
 
   completeSet: (exerciseIndex, setIndex, data) =>
@@ -71,7 +75,9 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
       sets[setIndex] = { ...data, is_completed: true };
       exercise.sets = sets;
       exercises[exerciseIndex] = exercise;
-      return { exercises };
+
+      const setXP = calculateSetXP(data.weight_kg, data.reps, data.rpe);
+      return { exercises, xpEarned: state.xpEarned + setXP };
     }),
 
   updateSet: (exerciseIndex, setIndex, data) =>
@@ -133,5 +139,6 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
       restTimeRemaining: 0,
       startTime: null,
       isActive: false,
+      xpEarned: 0,
     }),
 }));
