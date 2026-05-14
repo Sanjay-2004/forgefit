@@ -6,12 +6,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAppStore } from '@/stores/app-store';
 import { useWorkoutStore } from '@/stores/workout-store';
+import { useSaveSession, useAddXP } from '@/lib/hooks';
 import { XP_REWARDS } from '@/lib/constants';
 
 export default function WorkoutSessionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { activeProgram } = useAppStore();
+  const saveSession = useSaveSession();
+  const addXP = useAddXP();
   const {
     exercises,
     currentExerciseIndex,
@@ -84,14 +87,48 @@ export default function WorkoutSessionScreen() {
   }
 
   function handleFinish() {
+    const totalXP = xpEarned + XP_REWARDS.WORKOUT_COMPLETE;
     Alert.alert(
       'Finish Workout?',
-      `You earned ${xpEarned + XP_REWARDS.WORKOUT_COMPLETE} XP this session!`,
+      `You earned ${totalXP} XP this session!`,
       [
         { text: 'Keep Going', style: 'cancel' },
         {
           text: 'Finish',
-          onPress: () => {
+          onPress: async () => {
+            // Build exercise logs from all exercises
+            const exerciseLogs = exercises.flatMap((ex) =>
+              ex.sets
+                .filter((s) => s.is_completed)
+                .map((s, i) => ({
+                  exerciseName: ex.name,
+                  musclesWorked: ex.muscles,
+                  setNumber: i + 1,
+                  weightKg: s.weight_kg,
+                  reps: s.reps,
+                  rpe: s.rpe,
+                  isCompleted: true,
+                }))
+            );
+
+            // Save to Supabase
+            saveSession.mutate({
+              programId: activeProgram?.id,
+              name: dayPlan?.focus ?? 'Workout',
+              focus: dayPlan?.focus,
+              status: 'completed',
+              durationMinutes: 0, // TODO: track actual duration
+              xpEarned: totalXP,
+              exerciseLogs,
+            });
+
+            // Record XP
+            addXP.mutate({
+              amount: totalXP,
+              source: 'workout',
+              description: `Completed ${dayPlan?.focus ?? 'workout'}`,
+            });
+
             finishWorkout();
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             router.back();

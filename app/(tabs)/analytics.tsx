@@ -2,10 +2,22 @@ import { View, Text, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '@/stores/app-store';
+import { usePersonalRecords, useRecentSessions } from '@/lib/hooks';
+import { MuscleMap } from '@/components/muscle-map/muscle-map';
+import { ProgressPhotosView } from '@/components/progress/progress-photos';
 
 export default function AnalyticsScreen() {
   const { gamification } = useAppStore();
   const xp = gamification?.xp_total ?? 0;
+  const { data: personalRecords = [] } = usePersonalRecords();
+  const { data: recentSessions = [] } = useRecentSessions(7);
+
+  // Calculate weekly volume from recent sessions
+  const thisWeekSessions = recentSessions.filter((s) => {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return new Date(s.started_at ?? s.created_at) > weekAgo;
+  });
 
   return (
     <SafeAreaView className="flex-1 bg-bg-primary">
@@ -30,49 +42,55 @@ export default function AnalyticsScreen() {
           </View>
           <View className="flex-1 bg-bg-card rounded-2xl p-4">
             <Text className="text-accent-emerald font-bold text-xl">
-              {gamification?.quests_completed ?? 0}
+              {thisWeekSessions.length}
             </Text>
-            <Text className="text-text-muted text-xs mt-1">Workouts</Text>
+            <Text className="text-text-muted text-xs mt-1">This Week</Text>
           </View>
         </View>
 
-        {/* Weekly Volume Chart Placeholder */}
+        {/* Muscle Map */}
         <View className="bg-bg-card rounded-2xl p-5 mb-4">
           <Text className="text-text-muted text-xs uppercase tracking-widest font-bold mb-4">
-            Weekly Volume
+            Muscle Group Map
           </Text>
-          <View className="items-center py-12">
-            <Ionicons name="bar-chart-outline" size={48} color="#64748B" />
-            <Text className="text-text-secondary text-sm mt-3 text-center">
-              Complete workouts to see{'\n'}volume trends here
-            </Text>
-          </View>
-        </View>
-
-        {/* Muscle Map Placeholder */}
-        <View className="bg-bg-card rounded-2xl p-5 mb-4">
-          <Text className="text-text-muted text-xs uppercase tracking-widest font-bold mb-4">
-            Muscle Group Ranks
-          </Text>
-          <View className="items-center py-12">
-            <Ionicons name="body-outline" size={48} color="#64748B" />
-            <Text className="text-text-secondary text-sm mt-3 text-center">
-              Train muscles to level them up{'\n'}from E rank to Monarch
-            </Text>
-          </View>
+          <MuscleMap size="large" />
         </View>
 
         {/* Personal Records */}
-        <View className="bg-bg-card rounded-2xl p-5 mb-8">
+        <View className="bg-bg-card rounded-2xl p-5 mb-4">
           <Text className="text-text-muted text-xs uppercase tracking-widest font-bold mb-4">
             Personal Records
           </Text>
-          <View className="items-center py-8">
-            <Ionicons name="trophy-outline" size={48} color="#64748B" />
-            <Text className="text-text-secondary text-sm mt-3 text-center">
-              PRs will appear here as you train
-            </Text>
-          </View>
+          {personalRecords.length > 0 ? (
+            personalRecords.slice(0, 5).map((pr) => (
+              <View key={pr.id} className="flex-row items-center justify-between py-3 border-b border-bg-tertiary">
+                <View>
+                  <Text className="text-text-primary font-semibold">{pr.exercise_name}</Text>
+                  <Text className="text-text-muted text-xs">
+                    {new Date(pr.achieved_at).toLocaleDateString()}
+                  </Text>
+                </View>
+                <Text className="text-accent-gold font-bold">
+                  {pr.record_type === 'weight' ? `${pr.value}kg` : `${pr.value} ${pr.record_type}`}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <View className="items-center py-8">
+              <Ionicons name="trophy-outline" size={48} color="#64748B" />
+              <Text className="text-text-secondary text-sm mt-3 text-center">
+                PRs will appear here as you train
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Progress Photos */}
+        <View className="bg-bg-card rounded-2xl p-5 mb-8">
+          <Text className="text-text-muted text-xs uppercase tracking-widest font-bold mb-4">
+            Progress Photos
+          </Text>
+          <ProgressPhotosView />
         </View>
       </ScrollView>
     </SafeAreaView>

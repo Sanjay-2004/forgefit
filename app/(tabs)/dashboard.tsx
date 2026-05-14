@@ -3,7 +3,8 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '@/stores/app-store';
-import { getRankFromXP, getXPProgressInRank, getRankColor, isStreakActive } from '@/lib/utils';
+import { useRecentSessions, useGamification } from '@/lib/hooks';
+import { getRankFromXP, getXPProgressInRank, getRankColor, isStreakActive, getRelativeTime } from '@/lib/utils';
 import { XP_REWARDS } from '@/lib/constants';
 
 function RankBadge({ rank, size = 'large' }: { rank: string; size?: 'small' | 'large' }) {
@@ -62,7 +63,12 @@ function XPProgressBar({ current, needed, percentage }: { current: number; neede
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { profile, gamification, activeProgram } = useAppStore();
+  const { profile, gamification: storeGamification, activeProgram } = useAppStore();
+  const { data: serverGamification } = useGamification();
+  const { data: recentSessions = [] } = useRecentSessions(5);
+
+  // Prefer server data, fall back to store
+  const gamification = serverGamification ?? storeGamification;
 
   const xp = gamification?.xp_total ?? 0;
   const rank = gamification?.current_rank ?? getRankFromXP(xp);
@@ -154,17 +160,36 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Recent Activity Placeholder */}
+        {/* Recent Activity */}
         <View className="bg-bg-card rounded-2xl p-5 mb-8">
           <Text className="text-text-muted text-xs uppercase tracking-widest font-bold mb-3">
             Recent Activity
           </Text>
-          <View className="items-center py-6">
-            <Ionicons name="document-text-outline" size={40} color="#64748B" />
-            <Text className="text-text-secondary text-sm mt-2">
-              Complete your first workout to see activity
-            </Text>
-          </View>
+          {recentSessions.length > 0 ? (
+            recentSessions.map((session) => (
+              <View key={session.id} className="flex-row items-center py-3 border-b border-bg-tertiary last:border-b-0">
+                <View className="w-10 h-10 rounded-full bg-accent-purple/20 items-center justify-center mr-3">
+                  <Ionicons name="barbell" size={18} color="#6366F1" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-text-primary font-semibold text-sm">{session.name}</Text>
+                  <Text className="text-text-muted text-xs">
+                    {session.duration_minutes}min · {session.xp_earned ?? 0} XP
+                  </Text>
+                </View>
+                <Text className="text-text-muted text-xs">
+                  {getRelativeTime(session.completed_at ?? session.started_at ?? session.created_at)}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <View className="items-center py-6">
+              <Ionicons name="document-text-outline" size={40} color="#64748B" />
+              <Text className="text-text-secondary text-sm mt-2">
+                Complete your first workout to see activity
+              </Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

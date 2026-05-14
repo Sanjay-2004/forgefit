@@ -51,6 +51,8 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function loadProfile(userId: string) {
     setLoading(true);
+    const { setPreferences, setActiveProgram, setGamification } = useAppStore.getState();
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
@@ -59,6 +61,18 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (profile) {
       setProfile(profile);
+
+      // Load core data in parallel
+      const [prefsResult, programResult, gamificationResult] = await Promise.all([
+        supabase.from('user_preferences').select('*').eq('user_id', userId).single(),
+        supabase.from('workout_programs').select('*').eq('user_id', userId).eq('is_active', true).single(),
+        supabase.from('user_gamification').select('*').eq('user_id', userId).single(),
+      ]);
+
+      if (prefsResult.data) setPreferences(prefsResult.data);
+      if (programResult.data) setActiveProgram(programResult.data);
+      if (gamificationResult.data) setGamification(gamificationResult.data);
+
       if (!profile.onboarding_completed) {
         router.replace('/onboarding');
       } else {
