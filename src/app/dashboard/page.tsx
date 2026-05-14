@@ -76,8 +76,28 @@ export default function DashboardPage() {
     ]);
 
     setProfile(profileRes.data);
-    setProgram(programRes.data);
     setRecentSessions(sessionsRes.data ?? []);
+
+    // Use DB program if available, otherwise fall back to localStorage
+    if (programRes.data) {
+      setProgram(programRes.data);
+    } else {
+      try {
+        const stored = localStorage.getItem('forgefit_weekly_plan');
+        if (stored) {
+          const weeklyPlan = JSON.parse(stored);
+          setProgram({
+            id: 'local',
+            name: weeklyPlan.programName,
+            goal: weeklyPlan.goal,
+            weekly_plan: weeklyPlan,
+            is_active: true,
+          } as unknown as WorkoutProgram);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
 
     // Compute weekly stats
     const completedThisWeek = (sessionsRes.data ?? []).filter(
@@ -230,11 +250,20 @@ export default function DashboardPage() {
                 </Button>
               </Link>
             </Card>
-          ) : (
+          ) : program ? (
             <Card>
               <p className="text-text-secondary text-center py-4">
                 Rest day — recovery is just as important! 💤
               </p>
+            </Card>
+          ) : (
+            <Card>
+              <div className="text-center py-6 space-y-3">
+                <p className="text-text-secondary">No workout program yet</p>
+                <Link href="/onboarding">
+                  <Button variant="secondary">Create Program</Button>
+                </Link>
+              </div>
             </Card>
           )}
         </FadeIn>

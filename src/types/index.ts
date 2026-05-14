@@ -272,10 +272,10 @@ export interface OnboardingData {
   sex: Sex;
   height_cm: number;
   weight_kg: number;
-  fitness_goal: FitnessGoal;
+  fitness_goals: FitnessGoal[];
   experience_level: ExperienceLevel;
   injuries: string;
-  equipment_access: EquipmentAccess;
+  equipment_access: EquipmentAccess[];
   preferred_styles: WorkoutStyle[];
   workout_days_per_week: number;
   session_duration_minutes: number;

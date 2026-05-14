@@ -2,7 +2,7 @@
 
 import { useOnboardingStore } from '@/stores/onboarding-store';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { NumberPicker } from '@/components/ui/number-picker';
 import { motion } from 'framer-motion';
 import type { Sex } from '@/types';
 
@@ -29,17 +29,16 @@ export function BasicsStep() {
       </div>
 
       <div className="space-y-6">
-        <Input
-          label="Age"
-          type="number"
-          placeholder="Enter your age"
-          value={data.age ?? ''}
-          onChange={(e) =>
-            updateData({ age: e.target.value ? parseInt(e.target.value) : undefined })
-          }
-          min={13}
-          max={100}
-        />
+        <div className="flex justify-center">
+          <NumberPicker
+            value={data.age ?? 25}
+            onChange={(age) => updateData({ age })}
+            min={13}
+            max={100}
+            step={1}
+            label="Age"
+          />
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-3">

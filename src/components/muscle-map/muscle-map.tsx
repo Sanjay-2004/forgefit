@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import type { MuscleGroup } from '@/types';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -13,173 +12,384 @@ interface MuscleMapProps {
   showLabels?: boolean;
 }
 
-// Muscle path data for front and back views
-const FRONT_MUSCLES: Record<string, { path: string; label: string; group: MuscleGroup }> = {
-  chest_left: {
-    path: 'M85,95 Q90,85 105,82 Q115,80 120,85 Q125,95 120,108 Q115,115 105,112 Q90,110 85,100Z',
+// ─────────────────────────────────────────────
+// Clean anatomical muscle regions
+// Viewbox: 0 0 200 400 per side
+// Body center: x=100, head to toe: y=10..390
+// ─────────────────────────────────────────────
+
+interface MuscleRegion {
+  path: string;
+  label: string;
+  group: MuscleGroup;
+}
+
+const FRONT_BODY_OUTLINE =
+  // Head
+  'M88,28 C88,16 93,8 100,8 C107,8 112,16 112,28 C112,38 107,44 100,44 C93,44 88,38 88,28Z ' +
+  // Neck
+  'M94,44 L106,44 L107,52 L93,52Z ' +
+  // Shoulders + Torso
+  'M93,52 C86,52 72,54 64,58 C56,62 52,66 50,72 ' +
+  // Left arm
+  'C48,80 46,90 46,98 C44,108 42,118 42,128 C40,138 40,148 42,156 C42,162 44,166 48,168 C46,174 44,182 42,190 C40,198 40,206 42,212 ' +
+  // Left hand
+  'C44,218 46,220 48,218 ' +
+  // Back up torso left
+  'M50,72 C52,78 56,82 60,84 ' +
+  // Torso bottom left
+  'M60,84 C62,90 64,100 66,110 C68,120 70,134 72,148 C74,162 76,172 80,180 C84,188 88,192 94,196 L100,198 ' +
+  // Mirror right side
+  'L106,196 C112,192 116,188 120,180 C124,172 126,162 128,148 C130,134 132,120 134,110 C136,100 138,90 140,84 ' +
+  // Right arm
+  'M140,84 C144,82 148,78 150,72 C152,66 156,62 164,58 C172,54 186,52 193,52 L193,52 ' +
+  // Right outer arm
+  'M150,72 C152,80 154,90 154,98 C156,108 158,118 158,128 C160,138 160,148 158,156 C158,162 156,166 152,168 C154,174 156,182 158,190 C160,198 160,206 158,212 C156,218 154,220 152,218 ' +
+  // Left leg
+  'M94,196 C92,206 88,220 86,236 C84,252 82,268 82,280 C82,292 84,300 86,306 ' +
+  'C86,312 86,324 86,336 C86,350 86,362 88,374 C88,380 90,384 94,386 L100,386 ' +
+  // Right leg
+  'L106,386 C110,384 112,380 112,374 C114,362 114,350 114,336 C114,324 114,312 114,306 ' +
+  'C116,300 118,292 118,280 C118,268 116,252 114,236 C112,220 108,206 106,196';
+
+const BACK_BODY_OUTLINE = FRONT_BODY_OUTLINE; // Same silhouette
+
+const FRONT_MUSCLES: MuscleRegion[] = [
+  // Chest
+  {
+    path: 'M76,74 C80,68 88,64 100,66 L100,72 C100,80 98,88 94,94 C90,98 84,100 78,96 C74,92 72,86 72,80 C72,78 74,76 76,74Z',
     label: 'Chest',
     group: 'chest',
   },
-  chest_right: {
-    path: 'M155,95 Q150,85 135,82 Q125,80 120,85 Q115,95 120,108 Q125,115 135,112 Q150,110 155,100Z',
+  {
+    path: 'M124,74 C120,68 112,64 100,66 L100,72 C100,80 102,88 106,94 C110,98 116,100 122,96 C126,92 128,86 128,80 C128,78 126,76 124,74Z',
     label: 'Chest',
     group: 'chest',
   },
-  front_delt_left: {
-    path: 'M78,80 Q75,72 80,65 Q88,60 95,65 Q98,72 95,82 Q90,88 82,85Z',
+  // Front Delts
+  {
+    path: 'M64,60 C58,64 54,70 52,76 C54,82 58,86 62,86 C66,84 70,78 72,72 C74,68 72,64 68,60 L64,60Z',
     label: 'Front Delt',
     group: 'front_delts',
   },
-  front_delt_right: {
-    path: 'M162,80 Q165,72 160,65 Q152,60 145,65 Q142,72 145,82 Q150,88 158,85Z',
+  {
+    path: 'M136,60 C142,64 146,70 148,76 C146,82 142,86 138,86 C134,84 130,78 128,72 C126,68 128,64 132,60 L136,60Z',
     label: 'Front Delt',
     group: 'front_delts',
   },
-  side_delt_left: {
-    path: 'M72,75 Q68,68 72,60 Q78,55 82,60 Q80,68 78,78Z',
+  // Side Delts
+  {
+    path: 'M56,58 C52,60 50,66 50,72 C52,74 54,74 56,72 C58,68 60,64 62,60 C60,58 58,58 56,58Z',
     label: 'Side Delt',
     group: 'side_delts',
   },
-  side_delt_right: {
-    path: 'M168,75 Q172,68 168,60 Q162,55 158,60 Q160,68 162,78Z',
+  {
+    path: 'M144,58 C148,60 150,66 150,72 C148,74 146,74 144,72 C142,68 140,64 138,60 C140,58 142,58 144,58Z',
     label: 'Side Delt',
     group: 'side_delts',
   },
-  bicep_left: {
-    path: 'M72,95 Q68,88 70,82 Q75,78 80,82 Q82,90 80,100 Q78,108 72,105Z',
+  // Biceps
+  {
+    path: 'M48,86 C46,92 44,100 44,108 C44,118 44,126 46,132 C48,136 50,138 52,136 C56,132 58,124 58,114 C58,104 56,96 54,88 L48,86Z',
     label: 'Bicep',
     group: 'biceps',
   },
-  bicep_right: {
-    path: 'M168,95 Q172,88 170,82 Q165,78 160,82 Q158,90 160,100 Q162,108 168,105Z',
+  {
+    path: 'M152,86 C154,92 156,100 156,108 C156,118 156,126 154,132 C152,136 150,138 148,136 C144,132 142,124 142,114 C142,104 144,96 146,88 L152,86Z',
     label: 'Bicep',
     group: 'biceps',
   },
-  forearm_left: {
-    path: 'M65,115 Q62,108 66,100 Q72,96 76,100 Q78,108 74,118 Q70,125 65,122Z',
+  // Forearms
+  {
+    path: 'M44,136 C42,144 40,154 40,164 C40,172 40,178 42,182 C44,186 46,186 48,184 C50,178 52,168 52,158 C52,148 50,140 48,136 L44,136Z',
     label: 'Forearm',
     group: 'forearms',
   },
-  forearm_right: {
-    path: 'M175,115 Q178,108 174,100 Q168,96 164,100 Q162,108 166,118 Q170,125 175,122Z',
+  {
+    path: 'M156,136 C158,144 160,154 160,164 C160,172 160,178 158,182 C156,186 154,186 152,184 C150,178 148,168 148,158 C148,148 150,140 152,136 L156,136Z',
     label: 'Forearm',
     group: 'forearms',
   },
-  abs: {
-    path: 'M105,115 Q100,112 98,120 Q96,135 98,150 Q100,160 105,165 Q112,168 120,168 Q128,168 135,165 Q140,160 142,150 Q144,135 142,120 Q140,112 135,115Z',
+  // Abs (segmented 6-pack look)
+  {
+    path: 'M94,100 L106,100 C108,106 108,112 108,118 L108,170 C108,176 106,180 104,184 L96,184 C94,180 92,176 92,170 L92,118 C92,112 92,106 94,100Z',
     label: 'Abs',
     group: 'abs',
   },
-  obliques_left: {
-    path: 'M88,115 Q85,120 84,135 Q85,150 88,158 Q92,162 96,158 Q98,150 96,135 Q98,120 95,115Z',
+  // Obliques
+  {
+    path: 'M78,98 L92,100 L92,118 L92,170 C92,176 94,180 96,184 L86,186 C82,180 80,172 78,162 C76,150 76,138 76,126 C76,116 76,108 78,98Z',
     label: 'Obliques',
     group: 'obliques',
   },
-  obliques_right: {
-    path: 'M152,115 Q155,120 156,135 Q155,150 152,158 Q148,162 144,158 Q142,150 144,135 Q142,120 145,115Z',
+  {
+    path: 'M122,98 L108,100 L108,118 L108,170 C108,176 106,180 104,184 L114,186 C118,180 120,172 122,162 C124,150 124,138 124,126 C124,116 124,108 122,98Z',
     label: 'Obliques',
     group: 'obliques',
   },
-  quad_left: {
-    path: 'M92,175 Q88,170 86,180 Q84,200 86,220 Q88,235 92,240 Q98,245 105,242 Q110,238 112,225 Q114,210 112,195 Q110,180 108,175Z',
+  // Quads
+  {
+    path: 'M86,198 C90,194 96,192 100,194 L100,200 C100,220 98,244 96,264 C94,276 92,286 90,294 L84,294 C82,286 80,276 80,264 C80,248 80,228 82,212 C82,206 84,202 86,198Z',
     label: 'Quad',
     group: 'quads',
   },
-  quad_right: {
-    path: 'M148,175 Q152,170 154,180 Q156,200 154,220 Q152,235 148,240 Q142,245 135,242 Q130,238 128,225 Q126,210 128,195 Q130,180 132,175Z',
+  {
+    path: 'M114,198 C110,194 104,192 100,194 L100,200 C100,220 102,244 104,264 C106,276 108,286 110,294 L116,294 C118,286 120,276 120,264 C120,248 120,228 118,212 C118,206 116,202 114,198Z',
     label: 'Quad',
     group: 'quads',
   },
-  calf_left: {
-    path: 'M90,255 Q88,248 89,260 Q88,278 90,290 Q93,298 97,295 Q100,288 100,275 Q100,260 98,250Z',
+  // Calves
+  {
+    path: 'M84,306 C82,300 84,296 86,296 L92,296 C94,296 96,300 94,306 C96,316 96,328 94,342 C92,354 90,364 88,372 C86,364 84,354 82,342 C80,328 82,316 84,306Z',
     label: 'Calf',
     group: 'calves',
   },
-  calf_right: {
-    path: 'M150,255 Q152,248 151,260 Q152,278 150,290 Q147,298 143,295 Q140,288 140,275 Q140,260 142,250Z',
+  {
+    path: 'M116,306 C118,300 116,296 114,296 L108,296 C106,296 104,300 106,306 C104,316 104,328 106,342 C108,354 110,364 112,372 C114,364 116,354 118,342 C120,328 118,316 116,306Z',
     label: 'Calf',
     group: 'calves',
   },
-};
+];
 
-const BACK_MUSCLES: Record<string, { path: string; label: string; group: MuscleGroup }> = {
-  traps: {
-    path: 'M100,55 Q105,48 120,45 Q135,48 140,55 Q138,62 130,68 Q120,72 110,68 Q102,62 100,55Z',
+const BACK_MUSCLES: MuscleRegion[] = [
+  // Traps
+  {
+    path: 'M84,56 C90,52 96,50 100,48 C104,50 110,52 116,56 L116,66 C112,72 106,76 100,78 C94,76 88,72 84,66 L84,56Z',
     label: 'Traps',
     group: 'traps',
   },
-  rear_delt_left: {
-    path: 'M78,72 Q75,65 80,58 Q88,55 92,60 Q90,68 85,75Z',
+  // Rear Delts
+  {
+    path: 'M56,62 C52,66 50,72 50,76 C52,80 56,82 60,82 C64,80 68,76 70,70 C72,66 70,62 66,58 L56,62Z',
     label: 'Rear Delt',
     group: 'rear_delts',
   },
-  rear_delt_right: {
-    path: 'M162,72 Q165,65 160,58 Q152,55 148,60 Q150,68 155,75Z',
+  {
+    path: 'M144,62 C148,66 150,72 150,76 C148,80 144,82 140,82 C136,80 132,76 130,70 C128,66 130,62 134,58 L144,62Z',
     label: 'Rear Delt',
     group: 'rear_delts',
   },
-  upper_back_left: {
-    path: 'M88,78 Q92,72 102,70 Q108,72 110,80 Q108,95 100,100 Q92,98 88,90Z',
+  // Upper Back / Rhomboids
+  {
+    path: 'M82,68 C86,72 92,76 100,78 L100,100 C96,100 90,98 86,94 C82,90 80,84 78,78 L82,68Z',
     label: 'Upper Back',
     group: 'upper_back',
   },
-  upper_back_right: {
-    path: 'M152,78 Q148,72 138,70 Q132,72 130,80 Q132,95 140,100 Q148,98 152,90Z',
+  {
+    path: 'M118,68 C114,72 108,76 100,78 L100,100 C104,100 110,98 114,94 C118,90 120,84 122,78 L118,68Z',
     label: 'Upper Back',
     group: 'upper_back',
   },
-  lats_left: {
-    path: 'M82,88 Q78,95 80,110 Q82,125 86,135 Q92,140 98,135 Q102,125 102,110 Q100,95 95,88Z',
+  // Lats
+  {
+    path: 'M74,86 C76,94 78,100 82,106 L92,104 L100,102 L100,152 L90,154 C84,150 80,142 78,132 C76,122 74,110 74,100 C74,94 74,90 74,86Z',
     label: 'Lats',
     group: 'lats',
   },
-  lats_right: {
-    path: 'M158,88 Q162,95 160,110 Q158,125 154,135 Q148,140 142,135 Q138,125 138,110 Q140,95 145,88Z',
+  {
+    path: 'M126,86 C124,94 122,100 118,106 L108,104 L100,102 L100,152 L110,154 C116,150 120,142 122,132 C124,122 126,110 126,100 C126,94 126,90 126,86Z',
     label: 'Lats',
     group: 'lats',
   },
-  lower_back: {
-    path: 'M102,135 Q108,130 120,128 Q132,130 138,135 Q140,145 138,155 Q132,162 120,165 Q108,162 102,155 Q100,145 102,135Z',
+  // Lower Back / Erectors
+  {
+    path: 'M90,154 L110,154 C112,162 112,170 110,178 C106,184 104,188 100,190 C96,188 94,184 90,178 C88,170 88,162 90,154Z',
     label: 'Lower Back',
     group: 'lower_back',
   },
-  tricep_left: {
-    path: 'M70,82 Q66,88 68,100 Q70,110 74,112 Q78,110 80,100 Q80,88 76,82Z',
+  // Triceps
+  {
+    path: 'M48,82 C46,90 44,100 44,110 C44,120 44,128 46,134 C48,138 50,140 52,138 C56,134 58,126 58,116 C58,106 56,96 54,88 L48,82Z',
     label: 'Tricep',
     group: 'triceps',
   },
-  tricep_right: {
-    path: 'M170,82 Q174,88 172,100 Q170,110 166,112 Q162,110 160,100 Q160,88 164,82Z',
+  {
+    path: 'M152,82 C154,90 156,100 156,110 C156,120 156,128 154,134 C152,138 150,140 148,138 C144,134 142,126 142,116 C142,106 144,96 146,88 L152,82Z',
     label: 'Tricep',
     group: 'triceps',
   },
-  glute_left: {
-    path: 'M92,168 Q88,172 86,182 Q88,195 92,200 Q100,205 108,200 Q112,195 112,185 Q110,175 105,168Z',
+  // Glutes
+  {
+    path: 'M86,190 C90,188 96,186 100,188 L100,212 C96,214 92,214 88,212 C84,208 82,202 80,196 C80,194 82,192 86,190Z',
     label: 'Glute',
     group: 'glutes',
   },
-  glute_right: {
-    path: 'M148,168 Q152,172 154,182 Q152,195 148,200 Q140,205 132,200 Q128,195 128,185 Q130,175 135,168Z',
+  {
+    path: 'M114,190 C110,188 104,186 100,188 L100,212 C104,214 108,214 112,212 C116,208 118,202 120,196 C120,194 118,192 114,190Z',
     label: 'Glute',
     group: 'glutes',
   },
-  hamstring_left: {
-    path: 'M90,210 Q88,205 87,215 Q86,235 88,250 Q92,258 98,255 Q102,248 102,235 Q102,218 100,210Z',
+  // Hamstrings
+  {
+    path: 'M84,214 C88,214 94,214 100,214 L100,218 C100,238 98,258 96,274 C94,284 92,290 90,296 L84,296 C82,288 80,278 80,266 C80,250 80,234 82,220 C82,218 82,216 84,214Z',
     label: 'Hamstring',
     group: 'hamstrings',
   },
-  hamstring_right: {
-    path: 'M150,210 Q152,205 153,215 Q154,235 152,250 Q148,258 142,255 Q138,248 138,235 Q138,218 140,210Z',
+  {
+    path: 'M116,214 C112,214 106,214 100,214 L100,218 C100,238 102,258 104,274 C106,284 108,290 110,296 L116,296 C118,288 120,278 120,266 C120,250 120,234 118,220 C118,218 118,216 116,214Z',
     label: 'Hamstring',
     group: 'hamstrings',
   },
-};
+  // Calves (back)
+  {
+    path: 'M84,306 C82,300 84,296 86,296 L92,296 C94,296 96,300 94,306 C96,316 96,328 94,342 C92,354 90,364 88,372 C86,364 84,354 82,342 C80,328 82,316 84,306Z',
+    label: 'Calf',
+    group: 'calves',
+  },
+  {
+    path: 'M116,306 C118,300 116,296 114,296 L108,296 C106,296 104,300 106,306 C104,316 104,328 106,342 C108,354 110,364 112,372 C114,364 116,354 118,342 C120,328 118,316 116,306Z',
+    label: 'Calf',
+    group: 'calves',
+  },
+];
 
-function getIntensityColor(intensity: number): string {
-  if (intensity >= 0.8) return '#0c93e9';
-  if (intensity >= 0.5) return '#36adf8';
-  if (intensity >= 0.3) return '#7cc8fc';
-  return '#bae0fd';
+// Silhouette: a single clean filled body outline
+function BodySilhouette() {
+  return (
+    <g>
+      {/* Head */}
+      <ellipse cx="100" cy="28" rx="14" ry="18" fill="#1E1E2E" stroke="#333346" strokeWidth="0.6" />
+      {/* Neck */}
+      <rect x="94" y="44" width="12" height="10" rx="2" fill="#1E1E2E" stroke="#333346" strokeWidth="0.6" />
+      {/* Torso */}
+      <path
+        d="M64,58 C58,62 54,68 52,76 C54,80 58,84 64,86
+           L64,86 C68,98 72,118 74,140 C76,158 78,174 82,186
+           C86,194 92,198 100,200
+           C108,198 114,194 118,186
+           C122,174 124,158 126,140 C128,118 132,98 136,86
+           L136,86 C142,84 146,80 148,76 C146,68 142,62 136,58
+           C128,54 116,52 100,52 C84,52 72,54 64,58Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+      {/* Left upper arm */}
+      <path
+        d="M52,76 C48,84 46,94 46,106 C44,118 44,128 46,136
+           C48,140 50,142 54,140 C58,136 60,126 60,114
+           C60,102 58,92 54,84 L52,76Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+      {/* Left forearm */}
+      <path
+        d="M46,138 C44,146 42,158 42,168 C42,178 42,186 44,192
+           C46,198 48,200 52,196 C54,190 56,180 56,168
+           C56,156 54,146 52,140 L46,138Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+      {/* Right upper arm */}
+      <path
+        d="M148,76 C152,84 154,94 154,106 C156,118 156,128 154,136
+           C152,140 150,142 146,140 C142,136 140,126 140,114
+           C140,102 142,92 146,84 L148,76Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+      {/* Right forearm */}
+      <path
+        d="M154,138 C156,146 158,158 158,168 C158,178 158,186 156,192
+           C154,198 152,200 148,196 C146,190 144,180 144,168
+           C144,156 146,146 148,140 L154,138Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+      {/* Left thigh */}
+      <path
+        d="M88,196 C84,202 82,214 80,230 C80,248 80,264 82,278
+           C84,290 86,296 90,298 L96,298
+           C96,296 96,296 96,296 L100,200Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+      {/* Right thigh */}
+      <path
+        d="M112,196 C116,202 118,214 120,230 C120,248 120,264 118,278
+           C116,290 114,296 110,298 L104,298
+           C104,296 104,296 104,296 L100,200Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+      {/* Left calf */}
+      <path
+        d="M84,298 C82,304 82,316 84,332 C86,348 88,362 90,374
+           C90,380 92,384 96,386 L100,386 L100,386
+           C100,380 98,370 96,356 C94,340 92,320 94,304
+           C94,300 92,298 90,298 L84,298Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+      {/* Right calf */}
+      <path
+        d="M116,298 C118,304 118,316 116,332 C114,348 112,362 110,374
+           C110,380 108,384 104,386 L100,386 L100,386
+           C100,380 102,370 104,356 C106,340 108,320 106,304
+           C106,300 108,298 110,298 L116,298Z"
+        fill="#1E1E2E" stroke="#333346" strokeWidth="0.6"
+      />
+    </g>
+  );
+}
+
+// Intensity → color
+function getMuscleColor(intensity: number): string {
+  if (intensity >= 0.8) return '#22D3EE'; // cyan-400
+  if (intensity >= 0.5) return '#38BDF8'; // sky-400
+  if (intensity >= 0.3) return '#7DD3FC'; // sky-300
+  return '#BAE6FD'; // sky-200
+}
+
+// Single body view (front or back)
+function BodyView({
+  muscles,
+  activeMuscles,
+  intensityMap,
+  hoveredMuscle,
+  setHoveredMuscle,
+  onMuscleClick,
+  idPrefix,
+}: {
+  muscles: MuscleRegion[];
+  activeMuscles: MuscleGroup[];
+  intensityMap: Partial<Record<MuscleGroup, number>>;
+  hoveredMuscle: string | null;
+  setHoveredMuscle: (m: string | null) => void;
+  onMuscleClick?: (m: MuscleGroup) => void;
+  idPrefix: string;
+}) {
+  return (
+    <svg viewBox="30 0 140 400" className="w-full h-full">
+      <defs>
+        <filter id={`${idPrefix}Glow`}>
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+      </defs>
+
+      <BodySilhouette />
+
+      {muscles.map((muscle, i) => {
+        const key = `${idPrefix}-${muscle.group}-${i}`;
+        const isActive = activeMuscles.includes(muscle.group);
+        const intensity = intensityMap[muscle.group] ?? (isActive ? 0.6 : 0);
+        const color = getMuscleColor(intensity);
+        const isHovered = hoveredMuscle === key;
+
+        return (
+          <path
+            key={key}
+            d={muscle.path}
+            fill={isActive ? color : '#252538'}
+            fillOpacity={isActive ? 0.55 + intensity * 0.45 : 0.4}
+            stroke={isActive ? color : '#3A3A50'}
+            strokeWidth={isHovered ? 1.4 : 0.5}
+            strokeOpacity={isActive ? 1 : 0.4}
+            filter={isActive ? `url(#${idPrefix}Glow)` : undefined}
+            className={cn(
+              'transition-all duration-200',
+              onMuscleClick && 'cursor-pointer'
+            )}
+            onMouseEnter={() => setHoveredMuscle(key)}
+            onMouseLeave={() => setHoveredMuscle(null)}
+            onClick={() => onMuscleClick?.(muscle.group)}
+          />
+        );
+      })}
+    </svg>
+  );
 }
 
 export function MuscleMap({
@@ -189,133 +399,91 @@ export function MuscleMap({
   size = 'md',
   showLabels = false,
 }: MuscleMapProps) {
-  const [view, setView] = useState<'front' | 'back'>('front');
   const [hoveredMuscle, setHoveredMuscle] = useState<string | null>(null);
 
-  const muscles = view === 'front' ? FRONT_MUSCLES : BACK_MUSCLES;
-
   const sizeClasses = {
-    sm: 'w-40 h-56',
-    md: 'w-56 h-80',
-    lg: 'w-72 h-96',
+    sm: 'max-w-[240px]',
+    md: 'max-w-[320px]',
+    lg: 'max-w-[400px]',
   };
 
-  const viewBox = '60 35 120 280';
+  // Resolve hovered label
+  const allMuscles = [...FRONT_MUSCLES, ...BACK_MUSCLES];
+  const hoveredRegion = hoveredMuscle
+    ? allMuscles.find((_, i) => {
+        const prefix = hoveredMuscle.startsWith('front') ? 'front' : 'back';
+        return hoveredMuscle === `${prefix}-${allMuscles[i]?.group}-${i}`;
+      })
+    : null;
+
+  // Simpler label resolution
+  let hoveredLabel: string | null = null;
+  if (hoveredMuscle) {
+    const frontMatch = FRONT_MUSCLES.find(
+      (m, i) => hoveredMuscle === `front-${m.group}-${i}`
+    );
+    const backMatch = BACK_MUSCLES.find(
+      (m, i) => hoveredMuscle === `back-${m.group}-${i}`
+    );
+    hoveredLabel = frontMatch?.label ?? backMatch?.label ?? null;
+  }
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      {/* View toggle */}
-      <div className="flex gap-1 p-1 bg-surface-elevated rounded-lg">
-        <button
-          onClick={() => setView('front')}
-          className={cn(
-            'px-3 py-1.5 text-xs font-medium rounded-md transition-all',
-            view === 'front'
-              ? 'bg-forge-500/20 text-forge-400'
-              : 'text-text-tertiary hover:text-text-secondary'
-          )}
-        >
-          Front
-        </button>
-        <button
-          onClick={() => setView('back')}
-          className={cn(
-            'px-3 py-1.5 text-xs font-medium rounded-md transition-all',
-            view === 'back'
-              ? 'bg-forge-500/20 text-forge-400'
-              : 'text-text-tertiary hover:text-text-secondary'
-          )}
-        >
-          Back
-        </button>
+    <div className={cn('mx-auto', sizeClasses[size])}>
+      {/* Labels */}
+      <div className="flex justify-between px-4 mb-1">
+        <span className="text-[10px] text-text-tertiary uppercase tracking-widest font-medium">Front</span>
+        <span className="text-[10px] text-text-tertiary uppercase tracking-widest font-medium">Back</span>
       </div>
 
-      {/* Body SVG */}
-      <svg
-        viewBox={viewBox}
-        className={cn(sizeClasses[size], 'drop-shadow-lg')}
-      >
-        {/* Body outline */}
-        <defs>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-            <feMerge>
-              <feMergeNode in="coloredBlur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <linearGradient id="bodyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#2A2A3A" />
-            <stop offset="100%" stopColor="#1A1A25" />
-          </linearGradient>
-        </defs>
+      {/* Side-by-side front + back */}
+      <div className="flex gap-1">
+        <div className="flex-1">
+          <BodyView
+            muscles={FRONT_MUSCLES}
+            activeMuscles={activeMuscles}
+            intensityMap={intensityMap}
+            hoveredMuscle={hoveredMuscle}
+            setHoveredMuscle={setHoveredMuscle}
+            onMuscleClick={onMuscleClick}
+            idPrefix="front"
+          />
+        </div>
+        <div className="flex-1">
+          <BodyView
+            muscles={BACK_MUSCLES}
+            activeMuscles={activeMuscles}
+            intensityMap={intensityMap}
+            hoveredMuscle={hoveredMuscle}
+            setHoveredMuscle={setHoveredMuscle}
+            onMuscleClick={onMuscleClick}
+            idPrefix="back"
+          />
+        </div>
+      </div>
 
-        {/* Head */}
-        <ellipse cx="120" cy="42" rx="12" ry="14" fill="#2A2A3A" stroke="#3A3A4A" strokeWidth="0.5" />
-        {/* Neck */}
-        <rect x="114" y="53" width="12" height="8" fill="#2A2A3A" rx="2" />
-        {/* Torso */}
-        <path
-          d="M85,62 Q80,58 72,58 Q65,62 62,72 Q60,85 62,100 Q60,115 62,130 Q64,145 68,155 Q72,160 80,162 Q88,165 96,168 Q105,170 120,170 Q135,170 144,168 Q152,165 160,162 Q168,160 172,155 Q176,145 178,130 Q180,115 178,100 Q180,85 178,72 Q175,62 168,58 Q160,58 155,62Z"
-          fill="url(#bodyGradient)"
-          stroke="#3A3A4A"
-          strokeWidth="0.5"
-        />
-        {/* Arms */}
-        <path d="M72,62 Q60,65 55,78 Q52,95 55,115 Q58,130 60,140" fill="none" stroke="#3A3A4A" strokeWidth="8" strokeLinecap="round" />
-        <path d="M168,62 Q180,65 185,78 Q188,95 185,115 Q182,130 180,140" fill="none" stroke="#3A3A4A" strokeWidth="8" strokeLinecap="round" />
-        {/* Legs */}
-        <path d="M100,168 Q95,175 90,190 Q85,210 86,230 Q87,250 88,270 Q88,290 90,305" fill="none" stroke="#3A3A4A" strokeWidth="12" strokeLinecap="round" />
-        <path d="M140,168 Q145,175 150,190 Q155,210 154,230 Q153,250 152,270 Q152,290 150,305" fill="none" stroke="#3A3A4A" strokeWidth="12" strokeLinecap="round" />
+      {/* Hovered label */}
+      {showLabels && hoveredLabel && (
+        <div className="text-center mt-2">
+          <span className="text-xs font-medium text-forge-400 bg-forge-500/10 px-3 py-1 rounded-full">
+            {hoveredLabel}
+          </span>
+        </div>
+      )}
 
-        {/* Muscle groups */}
-        {Object.entries(muscles).map(([key, muscle]) => {
-          const isActive = activeMuscles.includes(muscle.group);
-          const intensity = intensityMap[muscle.group] ?? (isActive ? 0.6 : 0);
-          const color = getIntensityColor(intensity);
-          const isHovered = hoveredMuscle === key;
-
-          return (
-            <motion.path
-              key={key}
-              d={muscle.path}
-              fill={isActive ? color : 'transparent'}
-              fillOpacity={isActive ? 0.6 + intensity * 0.4 : 0}
-              stroke={isActive ? color : 'transparent'}
-              strokeWidth={isHovered ? 1.5 : 0.5}
-              strokeOpacity={0.8}
-              filter={isActive ? 'url(#glow)' : undefined}
-              className={cn(
-                'transition-all cursor-pointer',
-                isActive && 'muscle-active'
-              )}
-              onMouseEnter={() => setHoveredMuscle(key)}
-              onMouseLeave={() => setHoveredMuscle(null)}
-              onClick={() => onMuscleClick?.(muscle.group)}
-              initial={false}
-              animate={{
-                fillOpacity: isActive ? 0.5 + intensity * 0.5 : 0,
-                scale: isHovered ? 1.02 : 1,
-              }}
-              transition={{ duration: 0.3 }}
-            />
-          );
-        })}
-
-        {/* Hover label */}
-        {hoveredMuscle && muscles[hoveredMuscle] && showLabels && (
-          <text
-            x="120"
-            y="320"
-            textAnchor="middle"
-            fill="#F5F5F7"
-            fontSize="8"
-            fontWeight="600"
-          >
-            {muscles[hoveredMuscle].label}
-          </text>
-        )}
-      </svg>
+      {/* Legend */}
+      {activeMuscles.length > 0 && (
+        <div className="flex items-center justify-center gap-3 mt-3">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-sky-300" />
+            <span className="text-[10px] text-text-tertiary">Trained</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#252538] border border-[#3A3A50]" />
+            <span className="text-[10px] text-text-tertiary">Untrained</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

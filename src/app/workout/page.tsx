@@ -50,12 +50,50 @@ export default function WorkoutPage() {
         .order('day_of_week');
 
       setTemplates(tmpl ?? []);
+    } else {
+      // Fall back to localStorage if DB has no program
+      try {
+        const stored = localStorage.getItem('forgefit_weekly_plan');
+        if (stored) {
+          const weeklyPlan = JSON.parse(stored);
+          setProgram({
+            id: 'local',
+            name: weeklyPlan.programName,
+            goal: weeklyPlan.goal,
+            weekly_plan: weeklyPlan,
+            is_active: true,
+          } as unknown as WorkoutProgram);
+
+          const virtualTemplates = weeklyPlan.weeklyPlan.map(
+            (day: { day: string; focus: string; exercises: unknown[]; warmup?: string[]; cooldown?: string[] }, i: number) => ({
+              id: `local-${i}`,
+              program_id: 'local',
+              day_of_week: i,
+              name: `${day.day} — ${day.focus}`,
+              focus: day.focus,
+              exercises: day.exercises,
+              warmup: day.warmup ? { exercises: day.warmup, duration_minutes: 5 } : null,
+              cooldown: day.cooldown ? { exercises: day.cooldown, duration_minutes: 5 } : null,
+              estimated_duration_minutes: 60,
+            })
+          );
+          setTemplates(virtualTemplates as WorkoutTemplate[]);
+        }
+      } catch {
+        // ignore parse errors
+      }
     }
 
     setLoading(false);
   }
 
   async function startWorkout(template: WorkoutTemplate) {
+    // Can't start a session for locally-stored templates (no DB yet)
+    if (String(template.id).startsWith('local-')) {
+      // TODO: once DB tables exist, this will work
+      return;
+    }
+
     const supabase = createClient();
     const {
       data: { user },

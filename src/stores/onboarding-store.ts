@@ -13,6 +13,8 @@ interface OnboardingState {
 }
 
 const initialData: Partial<OnboardingData> = {
+  fitness_goals: [],
+  equipment_access: [],
   preferred_styles: [],
   workout_days_per_week: 4,
   session_duration_minutes: 60,
