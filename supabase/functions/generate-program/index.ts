@@ -13,6 +13,42 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+// ── TOON expansion: compact single-char keys → full keys ──
+
+function expandExercise(raw: any) {
+  const e = raw ?? {};
+  return {
+    name: e.n ?? e.name,
+    muscles: e.m ?? e.muscles,
+    sets: e.s ?? e.sets,
+    repRange: e.r ?? e.repRange,
+    restSeconds: e.t ?? e.restSeconds,
+    notes: e.o ?? e.notes ?? "",
+  };
+}
+
+function expandDay(raw: any) {
+  const d = raw ?? {};
+  return {
+    day: d.d ?? d.day,
+    focus: d.f ?? d.focus,
+    exercises: (d.e ?? d.exercises ?? []).map(expandExercise),
+    warmup: d.u ?? d.warmup ?? [],
+    cooldown: d.c ?? d.cooldown ?? [],
+  };
+}
+
+function expandTOON(raw: any) {
+  const p = raw ?? {};
+  return {
+    programName: p.p ?? p.programName,
+    goal: p.g ?? p.goal,
+    weeklyPlan: (p.w ?? p.weeklyPlan ?? []).map(expandDay),
+  };
+}
+
+// ── Sanitizers (operate on expanded keys) ──
+
 function sanitizeExercise(raw: any) {
   const exercise = raw ?? {};
   const rawMuscles = Array.isArray(exercise.muscles) ? exercise.muscles : [];
@@ -63,39 +99,42 @@ function sanitizeWeeklyPlan(raw: any, userData: any) {
   };
 }
 
+const M = VALID_MUSCLES.join(",");
+
 function buildPrompt(userData: any) {
   const hasCardio = userData.preferred_styles?.some((s: string) =>
     ["cardio", "running", "hiit", "hybrid"].includes(s)
   );
   const days = userData.workout_days_per_week ?? 4;
-  const duration = userData.session_duration_minutes ?? 60;
-  const minEx = duration <= 30 ? 5 : duration <= 45 ? 7 : 8;
-  const maxEx = duration <= 30 ? 7 : duration <= 45 ? 9 : 12;
+  const dur = userData.session_duration_minutes ?? 60;
+  const minEx = dur <= 30 ? 5 : dur <= 45 ? 7 : 8;
+  const maxEx = dur <= 30 ? 7 : dur <= 45 ? 9 : 12;
+  const split = userData.preferred_split ?? "auto";
 
-  return `Design a ${days}-day workout program:
+  const splitInstruction = split === "auto"
+    ? `Choose the best split for ${days}d/week.`
+    : split === "ppl"
+    ? `Use Push/Pull/Legs split across ${days} days.`
+    : split === "upper_lower"
+    ? `Use Upper/Lower split across ${days} days.`
+    : split === "full_body"
+    ? `Use Full Body split — every session trains all major groups.`
+    : split === "bro_split"
+    ? `Use a bro split — one major body part per day.`
+    : `Choose the best split for ${days}d/week.`;
 
-CLIENT: Age ${userData.age ?? "?"}, ${userData.sex ?? "?"}, ${userData.height_cm ?? "?"}cm, ${userData.weight_kg ?? "?"}kg
-Goals: ${userData.fitness_goals?.join(", ") || "General fitness"}
-Experience: ${userData.experience_level ?? "intermediate"}
-Injuries: ${userData.injuries || "None"}
-Equipment: ${userData.equipment_access?.join(", ") || "Full gym"}
-Location: ${userData.training_location ?? "gym"}
-Styles: ${userData.preferred_styles?.join(", ") || "Bodybuilding"}
-Duration: ${duration}min, ${days} days/week
-Activity: ${userData.activity_level ?? "moderate"}, Sleep: ${userData.sleep_quality ?? "good"}, Stress: ${userData.stress_level ?? "moderate"}
-
-RULES:
-- ${minEx}-${maxEx} exercises per session
-- Order: compounds → secondary compounds → isolation → core${hasCardio ? " → cardio LAST" : ""}
-- Compounds: 3-5 sets, 90-180s rest. Isolation: 3-4 sets, 60-90s rest
-${hasCardio ? "- Add 10-20min cardio as FINAL exercise(s)" : ""}
-- Include warmup (3-5 items) and cooldown (2-4 items)
-- Use ONLY these muscles: ${VALID_MUSCLES.join(", ")}
-
-JSON SCHEMA:
-{"programName":"string","goal":"string","weeklyPlan":[{"day":"Day 1","focus":"string","exercises":[{"name":"string","muscles":["string"],"sets":3,"repRange":"8-12","restSeconds":90,"notes":"string"}],"warmup":["string"],"cooldown":["string"]}]}
-
-Return ONLY valid JSON. Exactly ${days} workout days, no rest days.`;
+  return `${days}d program. SPLIT: ${splitInstruction}
+P:${userData.age ?? "?"}y ${userData.sex ?? "?"} ${userData.height_cm ?? "?"}cm ${userData.weight_kg ?? "?"}kg
+G:${userData.fitness_goals?.join(",") || "general_fitness"} X:${userData.experience_level ?? "intermediate"}
+I:${userData.injuries || "none"} E:${userData.equipment_access?.join(",") || "full_gym"}
+L:${userData.training_location ?? "gym"} S:${userData.preferred_styles?.join(",") || "bodybuilding"}
+T:${dur}min ${days}d/w A:${userData.activity_level ?? "moderate"} Z:${userData.sleep_quality ?? "good"} R:${userData.stress_level ?? "moderate"}
+${minEx}-${maxEx} ex/session. compound→iso→core${hasCardio ? "→cardio last 10-20min" : ""}
+Compound:3-5s 90-180s rest. Iso:3-4s 60-90s. Warmup(3-5) Cooldown(2-4)
+Muscles:${M}
+TOON keys: p=programName g=goal w=weeklyPlan d=day f=focus e=exercises n=name m=muscles s=sets r=repRange t=restSec o=notes u=warmup c=cooldown
+{"p":"str","g":"str","w":[{"d":"Day N","f":"str","e":[{"n":"str","m":["muscle"],"s":3,"r":"8-12","t":90,"o":""}],"u":["str"],"c":["str"]}]}
+JSON only. Exactly ${days} days, no rest days.`;
 }
 
 Deno.serve(async (req) => {
@@ -109,16 +148,16 @@ Deno.serve(async (req) => {
     const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") });
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: `You are an elite personal trainer designing periodized programs. Rules: 7-10 exercises per session, compounds first then isolation then cardio. Always respond with valid JSON only.`,
+          content: `Elite PT. Use TOON (Token Oriented Object Notation) compact keys. Compounds first, then isolation, then cardio. JSON only.`,
         },
         { role: "user", content: buildPrompt(userData) },
       ],
       temperature: 0.7,
-      max_tokens: 8000,
+      max_tokens: 4000,
       response_format: { type: "json_object" },
     });
 
@@ -126,7 +165,8 @@ Deno.serve(async (req) => {
     if (!content) throw new Error("No response from OpenAI");
 
     const parsed = JSON.parse(content);
-    const plan = sanitizeWeeklyPlan(parsed, userData);
+    const expanded = expandTOON(parsed);
+    const plan = sanitizeWeeklyPlan(expanded, userData);
 
     // Save to database
     const supabase = createClient(

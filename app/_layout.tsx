@@ -46,6 +46,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     } else if (session && inAuthGroup) {
       // Fetch profile to check onboarding
       loadProfile(session.user.id);
+    } else if (session && !inAuthGroup && !useAppStore.getState().profile) {
+      // Session exists but store is empty (e.g. hot reload) — reload data
+      loadProfile(session.user.id);
     }
   }, [session, initialized, segments]);
 

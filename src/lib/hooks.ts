@@ -14,6 +14,7 @@ import type {
   ProgressPhoto,
   UserGoalStats,
   WeeklyRecalibration,
+  MuscleGroup,
 } from '@/types';
 
 // ============================================
@@ -136,6 +137,27 @@ export function useSessionLogs(sessionId?: string) {
   });
 }
 
+// Fetch all unique muscles worked in the last 7 days for muscle map highlighting
+export function useRecentMusclesWorked() {
+  const { profile } = useAppStore();
+  return useQuery({
+    queryKey: ['recentMuscles', profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return [];
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('exercise_logs')
+        .select('muscles_worked')
+        .eq('user_id', profile.id)
+        .gte('created_at', weekAgo);
+      if (error) throw error;
+      const allMuscles = (data ?? []).flatMap((row: any) => row.muscles_worked ?? []);
+      return [...new Set(allMuscles)] as MuscleGroup[];
+    },
+    enabled: !!profile?.id,
+  });
+}
+
 export function useSaveSession() {
   const queryClient = useQueryClient();
   const { profile } = useAppStore();
@@ -200,6 +222,65 @@ export function useSaveSession() {
           is_completed: log.isCompleted,
         }));
         await supabase.from('exercise_logs').insert(logs);
+
+        // Auto-detect Personal Records (weight + volume)
+        // Group logs by exercise to find best set this session
+        const bestByExercise = new Map<
+          string,
+          { maxWeight: number; maxVolume: number }
+        >();
+        for (const log of session.exerciseLogs) {
+          if (!log.isCompleted || log.weightKg == null || log.reps == null) continue;
+          const volume = log.weightKg * log.reps;
+          const existing = bestByExercise.get(log.exerciseName) ?? { maxWeight: 0, maxVolume: 0 };
+          bestByExercise.set(log.exerciseName, {
+            maxWeight: Math.max(existing.maxWeight, log.weightKg),
+            maxVolume: Math.max(existing.maxVolume, volume),
+          });
+        }
+
+        // Fetch existing PRs for these exercises
+        const exerciseNames = Array.from(bestByExercise.keys());
+        if (exerciseNames.length > 0) {
+          const { data: existingPRs } = await supabase
+            .from('personal_records')
+            .select('exercise_name, record_type, value')
+            .eq('user_id', profile.id)
+            .in('exercise_name', exerciseNames);
+
+          const prMap = new Map<string, number>();
+          (existingPRs ?? []).forEach((pr: any) => {
+            prMap.set(`${pr.exercise_name}::${pr.record_type}`, pr.value);
+          });
+
+          const newPRs: any[] = [];
+          for (const [exerciseName, best] of bestByExercise) {
+            const prevWeight = prMap.get(`${exerciseName}::weight`) ?? 0;
+            const prevVolume = prMap.get(`${exerciseName}::volume`) ?? 0;
+            if (best.maxWeight > prevWeight) {
+              newPRs.push({
+                user_id: profile.id,
+                exercise_name: exerciseName,
+                record_type: 'weight',
+                value: best.maxWeight,
+                previous_value: prevWeight || null,
+              });
+            }
+            if (best.maxVolume > prevVolume) {
+              newPRs.push({
+                user_id: profile.id,
+                exercise_name: exerciseName,
+                record_type: 'volume',
+                value: best.maxVolume,
+                previous_value: prevVolume || null,
+              });
+            }
+          }
+
+          if (newPRs.length > 0) {
+            await supabase.from('personal_records').insert(newPRs);
+          }
+        }
       }
 
       return sessionData;
@@ -207,6 +288,8 @@ export function useSaveSession() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recentSessions'] });
       queryClient.invalidateQueries({ queryKey: ['gamification'] });
+      queryClient.invalidateQueries({ queryKey: ['personalRecords'] });
+      queryClient.invalidateQueries({ queryKey: ['recentMuscles'] });
     },
   });
 }
@@ -277,7 +360,7 @@ export function useAddXP() {
       // Update total XP
       const { data: gamification } = await supabase
         .from('user_gamification')
-        .select('xp_total')
+        .select('xp_total, streak_count, longest_streak, last_workout_date')
         .eq('user_id', profile.id)
         .single();
 
@@ -291,10 +374,47 @@ export function useAddXP() {
         if (newTotal >= thresholds[i]) { newRank = ranks[i]; break; }
       }
 
+      // Update streak
+      const today = new Date().toISOString().split('T')[0];
+      const lastDate = gamification?.last_workout_date
+        ? new Date(gamification.last_workout_date).toISOString().split('T')[0]
+        : null;
+
+      let newStreak = gamification?.streak_count ?? 0;
+      if (lastDate !== today) {
+        // Different day — check if streak continues or resets
+        if (lastDate) {
+          const diffMs = new Date(today).getTime() - new Date(lastDate).getTime();
+          const diffDays = diffMs / (1000 * 60 * 60 * 24);
+          newStreak = diffDays <= 2 ? newStreak + 1 : 1;
+        } else {
+          newStreak = 1;
+        }
+      }
+
+      const longestStreak = Math.max(gamification?.longest_streak ?? 0, newStreak);
+
       await supabase.from('user_gamification').update({
         xp_total: newTotal,
         current_rank: newRank,
+        last_workout_date: today,
+        streak_count: newStreak,
+        longest_streak: longestStreak,
       }).eq('user_id', profile.id);
+
+      // Also update local store immediately
+      const { setGamification } = useAppStore.getState();
+      const currentGam = useAppStore.getState().gamification;
+      if (currentGam) {
+        setGamification({
+          ...currentGam,
+          xp_total: newTotal,
+          current_rank: newRank as any,
+          last_workout_date: today,
+          streak_count: newStreak,
+          longest_streak: longestStreak,
+        });
+      }
 
       return { newTotal, newRank };
     },

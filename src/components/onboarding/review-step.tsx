@@ -66,9 +66,13 @@ export function ReviewStep() {
 
 function ReviewRow({ label, value }: { label: string; value?: string }) {
   return (
-    <View className="flex-row justify-between py-2 border-b border-bg-tertiary">
-      <Text className="text-text-secondary text-sm">{label}</Text>
-      <Text className="text-text-primary text-sm font-medium capitalize">
+    <View className="flex-row items-start py-2 border-b border-bg-tertiary">
+      <Text className="text-text-secondary text-sm flex-1 pr-3">{label}</Text>
+      <Text
+        className="text-text-primary text-sm font-medium capitalize flex-1 text-right"
+        numberOfLines={2}
+        ellipsizeMode="tail"
+      >
         {value || '—'}
       </Text>
     </View>

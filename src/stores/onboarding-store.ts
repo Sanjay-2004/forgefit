@@ -5,6 +5,7 @@ import type {
   WorkoutStyle,
   EquipmentAccess,
   FitnessGoal,
+  WorkoutSplit,
 } from '@/types';
 import { ONBOARDING_STEPS } from '@/types';
 
@@ -28,6 +29,7 @@ const initialData: Partial<OnboardingData> = {
   fitness_goals: [],
   equipment_access: [],
   preferred_styles: [],
+  preferred_split: 'auto',
   workout_days_per_week: 4,
   session_duration_minutes: 60,
   current_stats: {},

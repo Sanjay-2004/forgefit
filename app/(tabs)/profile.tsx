@@ -4,13 +4,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase/client';
 import { useAppStore } from '@/stores/app-store';
-import { getRankFromXP, getRankColor } from '@/lib/utils';
+import { useGamification } from '@/lib/hooks';
+import { getRankColor, getXPProgressInRank } from '@/lib/utils';
+import { RANK_ORDER, RANK_XP_THRESHOLDS, type HunterRank } from '@/types';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { profile, preferences, gamification } = useAppStore();
-  const rank = gamification?.current_rank ?? getRankFromXP(gamification?.xp_total ?? 0);
+  const { profile, preferences } = useAppStore();
+  const { data: gamification } = useGamification();
+
+  const rank = gamification?.current_rank ?? 'E';
+  const xpTotal = gamification?.xp_total ?? 0;
   const rankColor = getRankColor(rank);
+  const xpProgress = getXPProgressInRank(xpTotal);
 
   async function handleSignOut() {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -46,9 +52,69 @@ export default function ProfileScreen() {
               Rank {rank}
             </Text>
             <Text className="text-text-muted text-sm ml-2">
-              · {gamification?.xp_total?.toLocaleString() ?? 0} XP
+              · {xpTotal.toLocaleString()} XP
             </Text>
           </View>
+          {/* XP to next rank */}
+          <View className="w-full mt-3 px-6">
+            <View className="h-2 bg-bg-tertiary rounded-full overflow-hidden">
+              <View
+                className="h-full rounded-full"
+                style={{ width: `${xpProgress.percentage}%`, backgroundColor: rankColor }}
+              />
+            </View>
+            <Text className="text-text-secondary text-xs text-center mt-1">
+              {xpProgress.needed > 0
+                ? `${xpProgress.current.toLocaleString()} / ${xpProgress.needed.toLocaleString()} XP to next rank`
+                : 'Max rank achieved!'}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── Rank Ladder ── */}
+        <View className="bg-bg-card rounded-2xl p-5 mb-4">
+          <Text className="text-text-muted text-xs uppercase tracking-widest font-bold mb-4">
+            Rank Ladder
+          </Text>
+          {RANK_ORDER.map((r) => {
+            const isCurrent = r === rank;
+            const isUnlocked = xpTotal >= RANK_XP_THRESHOLDS[r];
+            const color = getRankColor(r);
+            return (
+              <View
+                key={r}
+                className={`flex-row items-center py-2.5 ${
+                  isCurrent ? 'bg-bg-tertiary rounded-lg px-2 -mx-2' : ''
+                }`}
+              >
+                <View
+                  className="w-8 h-8 rounded-full items-center justify-center mr-3"
+                  style={{
+                    backgroundColor: isUnlocked ? color + '20' : '#37415120',
+                  }}
+                >
+                  <Text
+                    className="text-xs font-bold"
+                    style={{ color: isUnlocked ? color : '#6B7280' }}
+                  >
+                    {r}
+                  </Text>
+                </View>
+                <Text
+                  className="flex-1 text-sm font-medium"
+                  style={{ color: isUnlocked ? '#E5E7EB' : '#6B7280' }}
+                >
+                  Rank {r}
+                </Text>
+                <Text className="text-text-secondary text-xs">
+                  {RANK_XP_THRESHOLDS[r].toLocaleString()} XP
+                </Text>
+                {isCurrent && (
+                  <Ionicons name="arrow-back" size={14} color={color} style={{ marginLeft: 6 }} />
+                )}
+              </View>
+            );
+          })}
         </View>
 
         {/* Info Cards */}

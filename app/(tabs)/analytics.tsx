@@ -2,7 +2,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '@/stores/app-store';
-import { usePersonalRecords, useRecentSessions } from '@/lib/hooks';
+import { usePersonalRecords, useRecentSessions, useRecentMusclesWorked } from '@/lib/hooks';
 import { MuscleMap } from '@/components/muscle-map/muscle-map';
 import { ProgressPhotosView } from '@/components/progress/progress-photos';
 
@@ -11,6 +11,7 @@ export default function AnalyticsScreen() {
   const xp = gamification?.xp_total ?? 0;
   const { data: personalRecords = [] } = usePersonalRecords();
   const { data: recentSessions = [] } = useRecentSessions(7);
+  const { data: recentMuscles = [] } = useRecentMusclesWorked();
 
   // Calculate weekly volume from recent sessions
   const thisWeekSessions = recentSessions.filter((s) => {
@@ -53,7 +54,7 @@ export default function AnalyticsScreen() {
           <Text className="text-text-muted text-xs uppercase tracking-widest font-bold mb-4">
             Muscle Group Map
           </Text>
-          <MuscleMap size="large" />
+          <MuscleMap size="large" highlightedMuscles={recentMuscles} />
         </View>
 
         {/* Personal Records */}

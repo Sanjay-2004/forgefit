@@ -44,6 +44,9 @@ export default function OnboardingScreen() {
   const { currentStep, nextStep, prevStep, data } = useOnboardingStore();
   const { profile, setProfile } = useAppStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { activeProgram } = useAppStore();
+  const isEditMode = !!profile?.onboarding_completed;
+  const needsProgram = !activeProgram;
 
   const StepComponent = STEP_COMPONENTS[currentStep];
   const stepName = ONBOARDING_STEPS[currentStep];
@@ -53,10 +56,11 @@ export default function OnboardingScreen() {
   async function handleComplete() {
     if (!profile?.id) return;
     setIsSubmitting(true);
+    const { setPreferences, setActiveProgram, setGamification } = useAppStore.getState();
 
     try {
       // Save preferences
-      await supabase.from('user_preferences').upsert({
+      const { data: prefsData } = await supabase.from('user_preferences').upsert({
         user_id: profile.id,
         age: data.age,
         sex: data.sex,
@@ -67,6 +71,7 @@ export default function OnboardingScreen() {
         injuries: data.injuries,
         equipment_access: data.equipment_access?.[0],
         preferred_styles: data.preferred_styles,
+        preferred_split: data.preferred_split ?? 'auto',
         workout_days_per_week: data.workout_days_per_week,
         session_duration_minutes: data.session_duration_minutes,
         activity_level: data.activity_level,
@@ -75,26 +80,45 @@ export default function OnboardingScreen() {
         nutrition_preferences: data.nutrition_preferences,
         training_location: data.training_location,
         dopamine_type: data.dopamine_type,
-      });
+      }).select().single();
 
-      // Generate program via edge function
-      const { data: programData } = await supabase.functions.invoke('generate-program', {
-        body: { userData: data, userId: profile.id },
-      });
+      if (prefsData) setPreferences(prefsData);
 
-      // Mark onboarding complete
-      await supabase.from('profiles').update({ onboarding_completed: true }).eq('id', profile.id);
-      setProfile({ ...profile, onboarding_completed: true });
+      // Generate program if first time OR if no program exists yet
+      if (!isEditMode || needsProgram) {
+        // Generate program via edge function
+        const { data: programData } = await supabase.functions.invoke('generate-program', {
+          body: { userData: data, userId: profile.id },
+        });
 
-      // Initialize gamification
-      await supabase.from('user_gamification').upsert({
-        user_id: profile.id,
-        xp_total: 0,
-        current_rank: 'E',
-        streak_count: 0,
-        streak_freeze_count: 1,
-        longest_streak: 0,
-      });
+        // Fetch the created program to store it
+        if (programData?.programId) {
+          const { data: program } = await supabase
+            .from('workout_programs')
+            .select('*')
+            .eq('id', programData.programId)
+            .single();
+          if (program) setActiveProgram(program);
+        }
+      }
+
+      if (!isEditMode) {
+        // Mark onboarding complete
+        await supabase.from('profiles').update({ onboarding_completed: true }).eq('id', profile.id);
+        setProfile({ ...profile, onboarding_completed: true });
+
+        // Initialize gamification
+        const { data: gamData } = await supabase.from('user_gamification').upsert({
+          user_id: profile.id,
+          xp_total: 0,
+          current_rank: 'E',
+          streak_count: 0,
+          streak_freeze_count: 1,
+          longest_streak: 0,
+        }).select().single();
+
+        if (gamData) setGamification(gamData);
+      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace('/(tabs)/dashboard');
@@ -158,7 +182,11 @@ export default function OnboardingScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text className="text-white font-bold text-base">
-              {isLastStep ? 'Generate My Program ⚔️' : 'Continue'}
+              {isLastStep
+                ? (isEditMode && !needsProgram)
+                  ? 'Save Changes'
+                  : 'Generate My Program ⚔️'
+                : 'Continue'}
             </Text>
           )}
         </Pressable>

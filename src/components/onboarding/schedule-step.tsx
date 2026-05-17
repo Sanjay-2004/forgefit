@@ -1,5 +1,14 @@
 import { View, Text, Pressable } from 'react-native';
 import { useOnboardingStore } from '@/stores/onboarding-store';
+import type { WorkoutSplit } from '@/types';
+
+const SPLITS: { value: WorkoutSplit; label: string; desc: string; icon: string }[] = [
+  { value: 'ppl', label: 'Push / Pull / Legs', desc: 'Best for 3–6 day splits', icon: '🏋️' },
+  { value: 'upper_lower', label: 'Upper / Lower', desc: 'Great for 4-day splits', icon: '⬆️' },
+  { value: 'full_body', label: 'Full Body', desc: 'Ideal for 2–3 day splits', icon: '💪' },
+  { value: 'bro_split', label: 'Bro Split', desc: '1 body part per day', icon: '🔥' },
+  { value: 'auto', label: 'Let AI Decide', desc: 'Based on your goals & schedule', icon: '🤖' },
+];
 
 export function ScheduleStep() {
   const { data, updateData } = useOnboardingStore();
@@ -10,6 +19,33 @@ export function ScheduleStep() {
       <Text className="text-text-secondary text-base mt-2 mb-8">
         How often and how long can you train?
       </Text>
+
+      {/* Split Type */}
+      <Text className="text-text-secondary text-sm font-semibold mb-3 uppercase tracking-wider">
+        Training Split
+      </Text>
+      <View className="gap-2 mb-8">
+        {SPLITS.map((split) => (
+          <Pressable
+            key={split.value}
+            onPress={() => updateData({ preferred_split: split.value })}
+            className={`flex-row items-center p-4 rounded-xl border ${
+              data.preferred_split === split.value
+                ? 'bg-accent-purple/10 border-accent-purple'
+                : 'bg-bg-card border-transparent'
+            } active:opacity-80`}
+          >
+            <Text className="text-xl mr-3">{split.icon}</Text>
+            <View className="flex-1">
+              <Text className="text-text-primary font-bold text-base">{split.label}</Text>
+              <Text className="text-text-muted text-xs">{split.desc}</Text>
+            </View>
+            {data.preferred_split === split.value && (
+              <Text className="text-accent-purple text-lg">✓</Text>
+            )}
+          </Pressable>
+        ))}
+      </View>
 
       {/* Days per week */}
       <Text className="text-text-secondary text-sm font-semibold mb-3 uppercase tracking-wider">

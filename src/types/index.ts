@@ -44,6 +44,13 @@ export type StressLevel = 'low' | 'moderate' | 'high' | 'very_high';
 
 export type TrainingLocation = 'home' | 'gym' | 'both';
 
+export type WorkoutSplit =
+  | 'ppl'           // Push / Pull / Legs
+  | 'upper_lower'   // Upper / Lower
+  | 'full_body'     // Full Body every session
+  | 'bro_split'     // Body-part per day
+  | 'auto';         // Let AI decide
+
 export type DopamineType =
   | 'competition'   // Blue Lock — rival comparisons, leaderboards
   | 'leveling'      // Solo Leveling — XP, ranks, power display
@@ -80,6 +87,7 @@ export interface UserPreferences {
   stress_level: StressLevel | null;
   nutrition_preferences: string | null;
   training_location: TrainingLocation | null;
+  preferred_split: WorkoutSplit | null;
   dopamine_type: DopamineType | null;
   created_at: string;
   updated_at: string;
@@ -420,6 +428,7 @@ export interface OnboardingData {
   nutrition_preferences: string;
   // New
   training_location: TrainingLocation;
+  preferred_split: WorkoutSplit;
   dopamine_type: DopamineType;
   current_stats: Record<string, number>;  // e.g. { bench_press: 60, squat: 80 }
   goal_stats: Record<string, number>;     // e.g. { bench_press: 100, squat: 140 }

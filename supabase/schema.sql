@@ -30,6 +30,7 @@ CREATE TABLE public.user_preferences (
   injuries TEXT,
   equipment_access TEXT CHECK (equipment_access IN ('full_gym', 'dumbbells_only', 'resistance_bands', 'bodyweight_only', 'running_only', 'hybrid')),
   preferred_styles TEXT[] DEFAULT '{}',
+  preferred_split TEXT DEFAULT 'auto' CHECK (preferred_split IN ('ppl', 'upper_lower', 'full_body', 'bro_split', 'auto')),
   workout_days_per_week INTEGER DEFAULT 4,
   session_duration_minutes INTEGER DEFAULT 60,
   activity_level TEXT CHECK (activity_level IN ('sedentary', 'lightly_active', 'moderately_active', 'very_active', 'extremely_active')),
