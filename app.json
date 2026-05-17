@@ -27,7 +27,12 @@
         "backgroundColor": "#0A0A1A"
       },
       "package": "com.forgefit.app",
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "VIBRATE", "RECEIVE_BOOT_COMPLETED"]
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -45,7 +50,8 @@
           "icon": "./assets/notification-icon.png",
           "color": "#4F46E5"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

@@ -20,7 +20,7 @@ export const useAppStore = create<AppState>((set) => ({
   preferences: null,
   activeProgram: null,
   gamification: null,
-  isLoading: true,
+  isLoading: false,
 
   setProfile: (profile) => set({ profile }),
   setPreferences: (preferences) => set({ preferences }),

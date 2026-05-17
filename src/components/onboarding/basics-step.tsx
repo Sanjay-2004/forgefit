@@ -1,8 +1,19 @@
 import { View, Text, TextInput } from 'react-native';
 import { useOnboardingStore } from '@/stores/onboarding-store';
+import { useAppStore } from '@/stores/app-store';
+import { supabase } from '@/lib/supabase/client';
+import { useState } from 'react';
 
 export function BasicsStep() {
   const { data, updateData } = useOnboardingStore();
+  const { profile, setProfile } = useAppStore();
+  const [fullName, setFullName] = useState(profile?.full_name ?? '');
+
+  function handleNameChange(name: string) {
+    setFullName(name);
+    supabase.from('profiles').update({ full_name: name }).eq('id', profile?.id).then();
+    setProfile(profile ? { ...profile, full_name: name } : null);
+  }
 
   return (
     <View className="mt-8">
@@ -17,7 +28,8 @@ export function BasicsStep() {
       <TextInput
         placeholder="Your name"
         placeholderTextColor="#64748B"
-        value={data.injuries !== undefined ? '' : ''}
+        value={fullName}
+        onChangeText={handleNameChange}
         className="bg-bg-card text-text-primary rounded-xl px-4 py-4 text-base mb-6"
       />
 

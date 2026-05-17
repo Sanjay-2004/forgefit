@@ -3,13 +3,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase/client';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
+import * as Linking from 'expo-linking';
 import { useEffect } from 'react';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
-  const redirectUrl = AuthSession.makeRedirectUri();
+  const redirectUrl = Linking.createURL('/');
 
   async function signInWithGoogle() {
     const { data, error } = await supabase.auth.signInWithOAuth({
