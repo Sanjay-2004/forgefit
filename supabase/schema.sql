@@ -414,6 +414,9 @@ CREATE INDEX idx_achievements_user ON public.achievements(user_id);
 CREATE INDEX idx_progress_photos_user ON public.progress_photos(user_id);
 CREATE INDEX idx_user_goal_stats_user ON public.user_goal_stats(user_id);
 CREATE INDEX idx_weekly_plans_user ON public.weekly_plans(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_workout_programs_one_active_per_user
+  ON public.workout_programs(user_id)
+  WHERE is_active = true;
 
 -- RLS for gamification tables
 ALTER TABLE public.user_gamification ENABLE ROW LEVEL SECURITY;

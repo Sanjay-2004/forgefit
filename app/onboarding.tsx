@@ -6,7 +6,8 @@ import { useOnboardingStore } from '@/stores/onboarding-store';
 import { useAppStore } from '@/stores/app-store';
 import { supabase } from '@/lib/supabase/client';
 import { ONBOARDING_STEPS } from '@/types';
-import { useState } from 'react';
+import { COMMON_LIFTS } from '@/lib/constants';
+import { useEffect, useState } from 'react';
 
 // Step Components
 import { BasicsStep } from '@/components/onboarding/basics-step';
@@ -41,8 +42,8 @@ const STEP_COMPONENTS = [
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { currentStep, nextStep, prevStep, data } = useOnboardingStore();
-  const { profile, setProfile } = useAppStore();
+  const { currentStep, nextStep, prevStep, data, updateData, setStep } = useOnboardingStore();
+  const { profile, preferences, setProfile } = useAppStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { activeProgram } = useAppStore();
   const isEditMode = !!profile?.onboarding_completed;
@@ -52,6 +53,68 @@ export default function OnboardingScreen() {
   const stepName = ONBOARDING_STEPS[currentStep];
   const isLastStep = currentStep === ONBOARDING_STEPS.length - 1;
   const progress = ((currentStep + 1) / ONBOARDING_STEPS.length) * 100;
+
+  // Prefill onboarding fields in edit mode so users don't re-enter everything.
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function hydrateForm() {
+      if (!profile?.id) return;
+
+      setStep(0);
+
+      if (preferences) {
+        updateData({
+          age: preferences.age ?? undefined,
+          sex: preferences.sex ?? undefined,
+          height_cm: preferences.height_cm ?? undefined,
+          weight_kg: preferences.weight_kg ?? undefined,
+          fitness_goals: preferences.fitness_goal ? [preferences.fitness_goal] : [],
+          experience_level: preferences.experience_level ?? undefined,
+          injuries: preferences.injuries ?? '',
+          equipment_access: preferences.equipment_access ? [preferences.equipment_access] : [],
+          preferred_styles: preferences.preferred_styles ?? [],
+          workout_days_per_week: preferences.workout_days_per_week ?? 4,
+          session_duration_minutes: preferences.session_duration_minutes ?? 60,
+          activity_level: preferences.activity_level ?? undefined,
+          sleep_quality: preferences.sleep_quality ?? undefined,
+          stress_level: preferences.stress_level ?? undefined,
+          nutrition_preferences: preferences.nutrition_preferences ?? '',
+          training_location: preferences.training_location ?? undefined,
+          preferred_split: preferences.preferred_split ?? 'auto',
+          dopamine_type: preferences.dopamine_type ?? undefined,
+        });
+      }
+
+      const { data: goalRows } = await supabase
+        .from('user_goal_stats')
+        .select('metric,current_value,goal_value')
+        .eq('user_id', profile.id);
+
+      if (isCancelled || !goalRows) return;
+
+      const currentStats: Record<string, number> = {};
+      const goalStats: Record<string, number> = {};
+
+      for (const row of goalRows) {
+        if (typeof row.metric === 'string') {
+          currentStats[row.metric] = Number(row.current_value ?? 0);
+          goalStats[row.metric] = Number(row.goal_value ?? 0);
+        }
+      }
+
+      updateData({
+        current_stats: currentStats,
+        goal_stats: goalStats,
+      });
+    }
+
+    hydrateForm();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [profile?.id, preferences?.updated_at]);
 
   async function handleComplete() {
     if (!profile?.id) return;
@@ -83,6 +146,42 @@ export default function OnboardingScreen() {
       }).select().single();
 
       if (prefsData) setPreferences(prefsData);
+
+      // Save current and goal stats so they can be prefilled later.
+      if (profile?.id) {
+        const metrics = new Set<string>([
+          ...Object.keys(data.current_stats ?? {}),
+          ...Object.keys(data.goal_stats ?? {}),
+        ]);
+
+        const unitByMetric = new Map(COMMON_LIFTS.map((lift) => [lift.key, lift.unit]));
+
+        const goalStatRows = Array.from(metrics)
+          .map((metric) => {
+            const currentValue = Number(data.current_stats?.[metric] ?? 0);
+            const goalValue = Number(data.goal_stats?.[metric] ?? 0);
+            if (currentValue <= 0 && goalValue <= 0) return null;
+            return {
+              user_id: profile.id,
+              metric,
+              current_value: currentValue,
+              goal_value: goalValue > 0 ? goalValue : currentValue,
+              unit: unitByMetric.get(metric) ?? 'kg',
+            };
+          })
+          .filter((row): row is {
+            user_id: string;
+            metric: string;
+            current_value: number;
+            goal_value: number;
+            unit: string;
+          } => !!row);
+
+        await supabase.from('user_goal_stats').delete().eq('user_id', profile.id);
+        if (goalStatRows.length > 0) {
+          await supabase.from('user_goal_stats').insert(goalStatRows);
+        }
+      }
 
       // Generate program if first time OR if no program exists yet
       if (!isEditMode || needsProgram) {

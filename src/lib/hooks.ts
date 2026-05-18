@@ -72,7 +72,9 @@ export function useActiveProgram() {
         .select('*')
         .eq('user_id', profile.id)
         .eq('is_active', true)
-        .single();
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error && error.code !== 'PGRST116') throw error;
       return (data as WorkoutProgram) ?? null;
     },

@@ -68,7 +68,14 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       // Load core data in parallel
       const [prefsResult, programResult, gamificationResult] = await Promise.all([
         supabase.from('user_preferences').select('*').eq('user_id', userId).single(),
-        supabase.from('workout_programs').select('*').eq('user_id', userId).eq('is_active', true).single(),
+        supabase
+          .from('workout_programs')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
         supabase.from('user_gamification').select('*').eq('user_id', userId).single(),
       ]);
 

@@ -174,6 +174,13 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // Keep exactly one active program per user.
+    await supabase
+      .from("workout_programs")
+      .update({ is_active: false })
+      .eq("user_id", userId)
+      .eq("is_active", true);
+
     const { data: program } = await supabase
       .from("workout_programs")
       .insert({
