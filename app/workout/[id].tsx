@@ -204,25 +204,30 @@ export default function WorkoutSessionScreen() {
                 })),
             );
 
-            saveSession.mutate({
-              programId: activeProgram?.id,
-              name: dayPlan?.focus ?? 'Workout',
-              focus: dayPlan?.focus,
-              status: 'completed',
-              durationMinutes: 0,
-              xpEarned: totalXP,
-              exerciseLogs,
-            });
+            try {
+              await saveSession.mutateAsync({
+                programId: activeProgram?.id,
+                name: dayPlan?.focus ?? 'Workout',
+                focus: dayPlan?.focus,
+                status: 'completed',
+                durationMinutes: 0,
+                xpEarned: totalXP,
+                exerciseLogs,
+              });
 
-            addXP.mutate({
-              amount: totalXP,
-              source: 'workout',
-              description: `Completed ${dayPlan?.focus ?? 'workout'}`,
-            });
+              await addXP.mutateAsync({
+                amount: totalXP,
+                source: 'workout_complete',
+                description: `Completed ${dayPlan?.focus ?? 'workout'}`,
+              });
 
-            finishWorkout();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            router.back();
+              finishWorkout();
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              router.back();
+            } catch (error) {
+              console.error('Failed to finish workout:', error);
+              Alert.alert('Could not finish workout', 'Please try again.');
+            }
           },
         },
       ],

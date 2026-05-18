@@ -80,21 +80,41 @@ Deno.serve(async (req) => {
 
     const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") });
 
+    // Determine which days are left this week (Mon=0…Sun=6)
+    const now = new Date();
+    const jsDay = now.getDay();
+    const todayIndex = jsDay === 0 ? 6 : jsDay - 1; // Mon=0
+    const remainingDayNames = [
+      "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+    ].slice(todayIndex);
+
+    // Figure out which muscles were already trained this week
+    const musclesTrained = new Set<string>();
+    for (const s of completedSessions) {
+      for (const log of (s.exercise_logs ?? [])) {
+        for (const m of (log.muscles_worked ?? [])) {
+          musclesTrained.add(m);
+        }
+      }
+    }
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: `You are an elite personal trainer analyzing a week of training data to generate next week's optimized program. Respond with valid JSON only.
+          content: `You are an elite personal trainer re-planning the REMAINING days of this week after some days were missed. Respond with valid JSON only.
 
-Rules:
+CRITICAL rules:
+- The user missed some workout days. You must redistribute exercises across the REMAINING days so every major muscle group is trained at least 2 times this week.
+- Muscles already trained this week: ${JSON.stringify([...musclesTrained])}. Prioritise muscles NOT yet trained.
+- Remaining days this week: ${remainingDayNames.join(', ')}
 - If completion rate < 70%, reduce volume slightly
-- If avg RPE > 8.5, consider a deload week (reduce weights by 10-15%)
+- If avg RPE > 8.5, consider a deload (reduce weights by 10-15%)
 - If avg RPE < 6, increase intensity
 - If PRs were hit, progress those exercises
-- Keep the same split structure but adjust exercises, sets, reps, weights
-- Add variety where the user might be getting bored (same exercises 3+ weeks)
-- Always include warmup and cooldown`,
+- Always include warmup and cooldown
+- Keep exercises practical for the user's equipment and location`,
         },
         {
           role: "user",
@@ -103,7 +123,9 @@ Rules:
 Week summary: ${JSON.stringify(weekSummary)}
 User preferences: ${JSON.stringify(prefs)}
 
-Generate next week's plan. Return JSON matching the exact same schema as the current program:
+Re-plan the FULL week (Mon-Sun). Keep completed days as-is and re-optimise the remaining days (${remainingDayNames.join(', ')}) to cover missed muscle groups.
+
+Return JSON matching the exact same schema as the current program:
 {"programName":"string","goal":"string","weeklyPlan":[{"day":"string","focus":"string","exercises":[{"name":"string","muscles":["string"],"sets":3,"repRange":"8-12","restSeconds":90,"notes":"string"}],"warmup":["string"],"cooldown":["string"]}]}
 
 Also include a top-level "reasoning" field explaining what you changed and why.`,
@@ -131,6 +153,12 @@ Also include a top-level "reasoning" field explaining what you changed and why.`
       plan_json: parsed,
       ai_reasoning: reasoning,
     });
+
+    // Also update the active program so the train screen reflects changes immediately
+    await supabase
+      .from("workout_programs")
+      .update({ weekly_plan: parsed, updated_at: new Date().toISOString() })
+      .eq("id", program.id);
 
     return new Response(JSON.stringify({ plan: parsed, reasoning, weekStart }), {
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },

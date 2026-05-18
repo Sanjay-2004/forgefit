@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +27,7 @@ export default function DashboardScreen() {
   const { data: quests = [] } = useQuests();
   const { data: recentSessions = [] } = useRecentSessions(5);
   const triggerRecalibration = useTriggerRecalibration();
+  const [guideTab, setGuideTab] = useState<'quests' | 'achievements' | null>(null);
 
   // ── Detect missed days for auto-recalibration ──
   useEffect(() => {
@@ -211,20 +212,32 @@ export default function DashboardScreen() {
             </Text>
             <Text className="text-text-secondary text-xs">workouts</Text>
           </View>
-          <View className="flex-1 bg-bg-card rounded-2xl p-4 items-center">
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setGuideTab('quests');
+            }}
+            className="flex-1 bg-bg-card rounded-2xl p-4 items-center"
+          >
             <Text className="text-text-secondary text-xs mb-1">Quests Done</Text>
             <Text className="text-text-primary text-2xl font-bold">
               {gamification?.quests_completed ?? 0}
             </Text>
-            <Text className="text-text-secondary text-xs">completed</Text>
-          </View>
-          <View className="flex-1 bg-bg-card rounded-2xl p-4 items-center">
+            <Text className="text-text-secondary text-xs">completed · tap for guide</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setGuideTab('achievements');
+            }}
+            className="flex-1 bg-bg-card rounded-2xl p-4 items-center"
+          >
             <Text className="text-text-secondary text-xs mb-1">Achievements</Text>
             <Text className="text-text-primary text-2xl font-bold">
               {gamification?.achievements_unlocked ?? 0}
             </Text>
-            <Text className="text-text-secondary text-xs">unlocked</Text>
-          </View>
+            <Text className="text-text-secondary text-xs">unlocked · tap for guide</Text>
+          </Pressable>
         </View>
 
         {/* ── Recent Activity ── */}
@@ -275,6 +288,108 @@ export default function DashboardScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={guideTab !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGuideTab(null)}
+      >
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-bg-card rounded-t-3xl p-5 max-h-[75%]">
+            <View className="flex-row items-center justify-between mb-4">
+              <Text className="text-text-primary text-lg font-bold">
+                {guideTab === 'quests' ? 'Quests Guide' : 'Achievements Guide'}
+              </Text>
+              <Pressable onPress={() => setGuideTab(null)}>
+                <Ionicons name="close" size={22} color="#CBD5E1" />
+              </Pressable>
+            </View>
+
+            <View className="flex-row bg-bg-tertiary rounded-xl p-1 mb-4">
+              <Pressable
+                className={`flex-1 py-2 rounded-lg items-center ${guideTab === 'quests' ? 'bg-accent-purple' : ''}`}
+                onPress={() => setGuideTab('quests')}
+              >
+                <Text className={`${guideTab === 'quests' ? 'text-white' : 'text-text-secondary'} text-sm font-semibold`}>
+                  Quests
+                </Text>
+              </Pressable>
+              <Pressable
+                className={`flex-1 py-2 rounded-lg items-center ${guideTab === 'achievements' ? 'bg-accent-purple' : ''}`}
+                onPress={() => setGuideTab('achievements')}
+              >
+                <Text className={`${guideTab === 'achievements' ? 'text-white' : 'text-text-secondary'} text-sm font-semibold`}>
+                  Achievements
+                </Text>
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {guideTab === 'quests' ? (
+                <View>
+                  <Text className="text-text-secondary text-sm mb-3">
+                    Quests are time-bound objectives. Complete active quests to gain bonus XP and increase your Quests Done count.
+                  </Text>
+                  {quests.length === 0 ? (
+                    <View className="bg-bg-tertiary rounded-xl p-4">
+                      <Text className="text-text-primary font-semibold">No active quests right now</Text>
+                      <Text className="text-text-secondary text-xs mt-1">
+                        New quests are generated by your activity cycle. Finish workouts and check back soon.
+                      </Text>
+                    </View>
+                  ) : (
+                    quests.map((quest) => {
+                      const progressPct = Math.min(100, (quest.current_value / quest.target_value) * 100);
+                      return (
+                        <View key={quest.id} className="bg-bg-tertiary rounded-xl p-4 mb-3">
+                          <Text className="text-text-primary font-semibold">{quest.title}</Text>
+                          <Text className="text-text-secondary text-xs mt-1">{quest.description}</Text>
+                          <View className="h-1.5 bg-bg-primary rounded-full overflow-hidden mt-3">
+                            <View className="h-full bg-accent-gold rounded-full" style={{ width: `${progressPct}%` }} />
+                          </View>
+                          <Text className="text-text-secondary text-xs mt-1">
+                            {quest.current_value} / {quest.target_value} · Reward: +{quest.xp_reward} XP
+                          </Text>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+              ) : (
+                <View>
+                  <Text className="text-text-secondary text-sm mb-3">
+                    Achievements are milestone unlocks based on long-term consistency and progression.
+                  </Text>
+
+                  <View className="bg-bg-tertiary rounded-xl p-4 mb-3">
+                    <Text className="text-text-primary font-semibold">Current unlocked</Text>
+                    <Text className="text-text-secondary text-xs mt-1">
+                      {gamification?.achievements_unlocked ?? 0} total achievements unlocked so far.
+                    </Text>
+                  </View>
+
+                  <View className="bg-bg-tertiary rounded-xl p-4 mb-3">
+                    <Text className="text-text-primary font-semibold">Typical unlock paths</Text>
+                    <Text className="text-text-secondary text-xs mt-2">• Keep streaks alive (daily consistency)</Text>
+                    <Text className="text-text-secondary text-xs mt-1">• Complete more quests</Text>
+                    <Text className="text-text-secondary text-xs mt-1">• Hit rank milestones via XP</Text>
+                    <Text className="text-text-secondary text-xs mt-1">• Finish workout/program milestones</Text>
+                  </View>
+
+                  <View className="bg-bg-tertiary rounded-xl p-4">
+                    <Text className="text-text-primary font-semibold">Your tracked signals</Text>
+                    <Text className="text-text-secondary text-xs mt-2">Streak: {gamification?.streak_count ?? 0}</Text>
+                    <Text className="text-text-secondary text-xs mt-1">Quests done: {gamification?.quests_completed ?? 0}</Text>
+                    <Text className="text-text-secondary text-xs mt-1">XP total: {xpTotal.toLocaleString()}</Text>
+                    <Text className="text-text-secondary text-xs mt-1">Current rank: {rank}</Text>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

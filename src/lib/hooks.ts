@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo as reactUseMemo } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAppStore } from '@/stores/app-store';
 import type {
@@ -16,6 +17,67 @@ import type {
   WeeklyRecalibration,
   MuscleGroup,
 } from '@/types';
+
+function getUTCDateKey(dateInput: string): string {
+  return new Date(dateInput).toISOString().split('T')[0];
+}
+
+function calculateStreakStats(orderedDateKeysDesc: string[]) {
+  if (orderedDateKeysDesc.length === 0) {
+    return { streakCount: 0, longestStreak: 0, lastWorkoutDate: null as string | null };
+  }
+
+  let streakCount = 1;
+  for (let i = 1; i < orderedDateKeysDesc.length; i++) {
+    const prev = new Date(`${orderedDateKeysDesc[i - 1]}T00:00:00Z`).getTime();
+    const cur = new Date(`${orderedDateKeysDesc[i]}T00:00:00Z`).getTime();
+    const diffDays = (prev - cur) / (1000 * 60 * 60 * 24);
+    if (diffDays === 1) {
+      streakCount += 1;
+    } else {
+      break;
+    }
+  }
+
+  let longestStreak = 1;
+  let run = 1;
+  for (let i = 1; i < orderedDateKeysDesc.length; i++) {
+    const prev = new Date(`${orderedDateKeysDesc[i - 1]}T00:00:00Z`).getTime();
+    const cur = new Date(`${orderedDateKeysDesc[i]}T00:00:00Z`).getTime();
+    const diffDays = (prev - cur) / (1000 * 60 * 60 * 24);
+    if (diffDays === 1) {
+      run += 1;
+      longestStreak = Math.max(longestStreak, run);
+    } else {
+      run = 1;
+    }
+  }
+
+  return {
+    streakCount,
+    longestStreak,
+    lastWorkoutDate: orderedDateKeysDesc[0],
+  };
+}
+
+async function computeUserStreakFromSessions(userId: string) {
+  const { data: sessions, error } = await supabase
+    .from('workout_sessions')
+    .select('completed_at')
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+    .not('completed_at', 'is', null)
+    .order('completed_at', { ascending: false })
+    .limit(365);
+
+  if (error) throw error;
+
+  const uniqueDateKeys = Array.from(
+    new Set((sessions ?? []).map((s: any) => getUTCDateKey(s.completed_at))),
+  );
+
+  return calculateStreakStats(uniqueDateKeys);
+}
 
 // ============================================
 // Profile & Preferences
@@ -52,6 +114,57 @@ export function usePreferences() {
         .single();
       if (error) throw error;
       return data as UserPreferences;
+    },
+    enabled: !!profile?.id,
+  });
+}
+
+// ============================================
+// Week Session Status Map (Mon–Sun)
+// ============================================
+
+/** Returns a map of date string → 'completed' | 'skipped' | null for the current Mon–Sun week */
+export function useWeekSessionMap() {
+  const { profile } = useAppStore();
+
+  // Compute the Monday that starts the current week (Mon=0 … Sun=6)
+  const monday = reactUseMemo(() => {
+    const now = new Date();
+    const jsDay = now.getDay(); // 0=Sun, 1=Mon ...
+    const offset = jsDay === 0 ? -6 : 1 - jsDay;
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + offset);
+    mon.setHours(0, 0, 0, 0);
+    return mon;
+  }, []);
+
+  return useQuery({
+    queryKey: ['weekSessions', profile?.id, monday.toISOString()],
+    queryFn: async () => {
+      if (!profile?.id) return {} as Record<string, 'completed' | 'skipped' | null>;
+
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+
+      const { data: sessions, error } = await supabase
+        .from('workout_sessions')
+        .select('status, completed_at, started_at')
+        .eq('user_id', profile.id)
+        .gte('started_at', monday.toISOString())
+        .lte('started_at', sunday.toISOString());
+
+      if (error) throw error;
+
+      const map: Record<string, 'completed' | 'skipped'> = {};
+      for (const s of sessions ?? []) {
+        const dateKey = (s.completed_at ?? s.started_at).split('T')[0];
+        // A completed session wins over skipped for the same day
+        if (s.status === 'completed' || !map[dateKey]) {
+          map[dateKey] = s.status as 'completed' | 'skipped';
+        }
+      }
+      return map;
     },
     enabled: !!profile?.id,
   });
@@ -312,7 +425,37 @@ export function useGamification() {
         .eq('user_id', profile.id)
         .single();
       if (error && error.code !== 'PGRST116') throw error;
-      return (data as UserGamification) ?? null;
+
+      const gamification = (data as UserGamification) ?? null;
+      if (!gamification) return null;
+
+      // Recompute from historical sessions so stale/incorrect counters self-heal.
+      const streakStats = await computeUserStreakFromSessions(profile.id);
+      const needsSync =
+        gamification.streak_count !== streakStats.streakCount ||
+        gamification.last_workout_date !== streakStats.lastWorkoutDate ||
+        gamification.longest_streak < streakStats.longestStreak;
+
+      if (needsSync) {
+        const syncedLongest = Math.max(gamification.longest_streak, streakStats.longestStreak);
+        await supabase
+          .from('user_gamification')
+          .update({
+            streak_count: streakStats.streakCount,
+            last_workout_date: streakStats.lastWorkoutDate,
+            longest_streak: syncedLongest,
+          })
+          .eq('user_id', profile.id);
+
+        return {
+          ...gamification,
+          streak_count: streakStats.streakCount,
+          last_workout_date: streakStats.lastWorkoutDate,
+          longest_streak: syncedLongest,
+        } as UserGamification;
+      }
+
+      return gamification;
     },
     enabled: !!profile?.id,
   });
@@ -351,20 +494,22 @@ export function useAddXP() {
       if (!profile?.id) throw new Error('Not authenticated');
 
       // Record transaction
-      await supabase.from('xp_transactions').insert({
+      const { error: txnError } = await supabase.from('xp_transactions').insert({
         user_id: profile.id,
         amount,
         source,
         description,
         session_id: sessionId,
       });
+      if (txnError) throw txnError;
 
       // Update total XP
-      const { data: gamification } = await supabase
+      const { data: gamification, error: gamificationError } = await supabase
         .from('user_gamification')
         .select('xp_total, streak_count, longest_streak, last_workout_date')
         .eq('user_id', profile.id)
         .single();
+      if (gamificationError) throw gamificationError;
 
       const newTotal = (gamification?.xp_total ?? 0) + amount;
 
@@ -376,33 +521,17 @@ export function useAddXP() {
         if (newTotal >= thresholds[i]) { newRank = ranks[i]; break; }
       }
 
-      // Update streak
-      const today = new Date().toISOString().split('T')[0];
-      const lastDate = gamification?.last_workout_date
-        ? new Date(gamification.last_workout_date).toISOString().split('T')[0]
-        : null;
+      const streakStats = await computeUserStreakFromSessions(profile.id);
+      const longestStreak = Math.max(gamification?.longest_streak ?? 0, streakStats.longestStreak);
 
-      let newStreak = gamification?.streak_count ?? 0;
-      if (lastDate !== today) {
-        // Different day — check if streak continues or resets
-        if (lastDate) {
-          const diffMs = new Date(today).getTime() - new Date(lastDate).getTime();
-          const diffDays = diffMs / (1000 * 60 * 60 * 24);
-          newStreak = diffDays <= 2 ? newStreak + 1 : 1;
-        } else {
-          newStreak = 1;
-        }
-      }
-
-      const longestStreak = Math.max(gamification?.longest_streak ?? 0, newStreak);
-
-      await supabase.from('user_gamification').update({
+      const { error: updateError } = await supabase.from('user_gamification').update({
         xp_total: newTotal,
         current_rank: newRank,
-        last_workout_date: today,
-        streak_count: newStreak,
+        last_workout_date: streakStats.lastWorkoutDate,
+        streak_count: streakStats.streakCount,
         longest_streak: longestStreak,
       }).eq('user_id', profile.id);
+      if (updateError) throw updateError;
 
       // Also update local store immediately
       const { setGamification } = useAppStore.getState();
@@ -412,8 +541,8 @@ export function useAddXP() {
           ...currentGam,
           xp_total: newTotal,
           current_rank: newRank as any,
-          last_workout_date: today,
-          streak_count: newStreak,
+          last_workout_date: streakStats.lastWorkoutDate,
+          streak_count: streakStats.streakCount,
           longest_streak: longestStreak,
         });
       }
